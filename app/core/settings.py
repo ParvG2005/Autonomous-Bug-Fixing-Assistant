@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     autofix_label: str = "autofix"  # the issue label that triggers a job
+    #: Browser origins allowed to call the API (the dashboard dev server). In
+    #: production the built assets are served same-origin, so this is dev-only.
+    cors_origins: list[str] = Field(
+        default_factory=lambda: ["http://localhost:5173", "http://127.0.0.1:5173"]
+    )
 
     # --- GitHub App (Phase 5+) ---
     github_app_id: str | None = None

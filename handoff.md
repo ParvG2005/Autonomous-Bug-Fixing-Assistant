@@ -3,7 +3,59 @@
 > Running progress log. Update this at the end of every working session: what got done, what's
 > left, and anything the next session needs to know. Most recent entry on top.
 
-## Current status: PHASES 0–11 COMPLETE — eval harness (headline resolve rate)
+## Current status: PHASES 0–12 COMPLETE — React dashboard (watch live + approve)
+
+Phase 12 (Dashboard) closes the loop: a human can watch a fix stream in and approve it from a
+browser. It also lands the approve/reject wiring that was open since Phase 7 — the dashboard button
+is its natural driver.
+
+- **Backend — the C1 gate, now over HTTP (`app/api/jobs.py`):** `POST /jobs/{id}/approve` and
+  `/reject` append an **immutable decision** and drive the state machine. Both are legal **only from
+  `awaiting_approval`** — any other state is a 409 with no row written (the transition is checked
+  *before* the write, and the request session rolls back on the raise). They never touch GitHub: the
+  draft-PR publish stays behind `bugfix-pr open --confirm` (the decision chosen for this phase —
+  record + transition only, no auto-publish, no surprise egress). `GET /jobs/{id}/artifacts/{kind}`
+  serves the **diff / reasoning / trace** bodies the UI renders (`log` is SSE-only; `issue_body` is
+  untrusted → both refused with 400).
+- **Backend — DB approval store (`app/db/approvals.py`):** async `record_decision` / `latest_decision`
+  over the Phase 6 `approval` table — the DB-backed, async counterpart of the Phase 5
+  `app.vcs.approval` JSON/in-memory stores (append-only; a reversal is a new row; latest wins). Caller
+  owns the transaction, mirroring `record_log`.
+- **Backend — CORS (`app/api/main.py` + `cors_origins` setting):** the Vite dev server
+  (`localhost:5173`) is a different origin, so `CORSMiddleware` allows the configured dev origins
+  (GET/POST). Prod serves the built assets same-origin, so this is dev-only.
+- **Frontend (`frontend/`, React 18 + Vite 5 + Tailwind 3 + TS):** `src/api.ts` (typed client, relative
+  URLs → works behind the dev proxy and same-origin in prod, `ApiError` carries the server `detail`);
+  `src/hooks/useJobStream.ts` (EventSource over the SSE log endpoint → collects `log` lines + the
+  terminal `state` event); components `JobList`, `JobDetail` (status, per-phase runs, fix summary,
+  **live log**, **diff view**, **reasoning trace**, and **approve/reject** — shown only when
+  `awaiting_approval`, with an actor field), `StatusBadge`, `DiffView`; `App.tsx` (list + detail,
+  polls the list every 4s as a coarse fallback while SSE carries per-job live logs). `vite.config.ts`
+  proxies `/jobs|/metrics|/healthz` → `:8000` in dev.
+
+Acceptance (Phase 12): **a fix can be watched live and approved from the UI** — the SSE hook streams
+progress, the diff/reasoning artifacts render, and the approve button POSTs to the C1-gated endpoint.
+Covered **offline**: backend over ASGI + SQLite (`tests/unit/test_api_approvals.py`,
+`test_api_cors.py` — approve/reject record+transition, 409 on wrong state with no row, 404/400, defaults,
+artifact fetch + disallowed-kind guard, CORS allow/deny); frontend via Vitest + jsdom
+(`frontend/src/__tests__/` — api client URLs/methods/`ApiError`, `useJobStream` log+state collection,
+`JobDetail` approve/reject/error/hidden-controls flows with mocked fetch + EventSource). Whole Python
+suite: **305 passed, 4 skipped** offline (+9 integration deselected); ruff + format + mypy clean;
+`alembic check` drift-free (the `approval` table already existed from Phase 6 → no migration). Frontend:
+**12 vitest tests pass** and `npm run build` (tsc + vite) is green. New Python runtime deps: none
+(`CORSMiddleware` ships with FastAPI). Frontend deps are isolated under `frontend/` (gitignored
+`node_modules/` + `dist/`).
+
+**Next session:** Phase 13 (Deploy + CI/CD) — dockerize all services, Fly.io with managed Postgres +
+Redis + secrets, GitHub Actions test→build→push→deploy, migrations on deploy, healthchecks, rollback.
+Serve the built `frontend/dist` from the API (or a static host) so the dashboard is same-origin in
+prod. Still optional: auto-publish on approve (wire `open_draft_pr_for_fix` behind the approve
+endpoint once GitHub creds live in the API process — crosses a stop-and-ask gate), and a real
+SWE-bench-lite number.
+
+---
+
+## Earlier: PHASES 0–11 COMPLETE — eval harness (headline resolve rate)
 
 Phase 11 (Eval harness) turns the Phase 4 `solve_issue` pipeline into a measurable benchmark: a *suite*
 of buggy cases, each run end-to-end, scored with the **same `app.telemetry.metrics`** the live fleet
@@ -484,7 +536,8 @@ acceptance tests are in `docs/BUILD_PLAN.md`. Phases not started:
 - [x] Phase 11 — eval harness (custom buggy-commit set offline-tested + SWE-bench-lite loader gated;
       resolve/regression scoring reusing `app.telemetry.metrics`; `score_delta` tuning loop;
       `bugfix-eval run` prints the headline number — real-API baseline 100% (3/3), $0.208)
-- [ ] Phase 12 — React dashboard (SSE, approve/reject)
+- [x] Phase 12 — React dashboard (Vite+React+Tailwind; list/detail/diff/reasoning; live SSE log;
+      approve/reject wired to the C1 gate + DB approval store + CORS; offline-tested backend + Vitest)
 - [ ] Phase 13 — deploy + CI/CD (Fly.io, migrations, rollback)
 - [ ] Phase 14 — docs + demo + final eval number
 
@@ -510,8 +563,9 @@ Start Phase 0 scaffold (no external access needed) so Phase 1 can begin the mome
 land. Phase 1's repo-brain CLI is also buildable + testable without Docker or an API key.
 
 ---
-_Last updated: 2026-06-30 — Phase 11 complete (eval harness): a custom buggy-commit suite + a gated
-SWE-bench-lite loader, scored with the fleet's own `app.telemetry.metrics`, a `score_delta` tuning
-loop, and one command (`bugfix-eval run`) that prints the headline resolve rate. Real-API baseline:
-**100% (3/3)**, regression 0%, $0.208 total on claude-sonnet-4-6. Whole suite: **292 passed, 4 skipped**
-offline; ruff + format + mypy clean; alembic drift-free._
+_Last updated: 2026-06-30 — Phase 12 complete (React dashboard): list runs, run detail with diff +
+reasoning trace, live SSE log, and approve/reject buttons wired to the C1 human gate (new
+`POST /jobs/{id}/approve|reject` + DB-backed `app/db/approvals.py` + artifact-fetch endpoint + dev
+CORS; record + transition only, publish still gated). Frontend is Vite + React 18 + Tailwind 3 under
+`frontend/`. Whole Python suite: **305 passed, 4 skipped** offline; ruff + format + mypy clean; alembic
+drift-free. Frontend: 12 vitest tests + `npm run build` green._

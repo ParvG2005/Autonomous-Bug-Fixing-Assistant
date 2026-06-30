@@ -11,6 +11,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.jobs import router as jobs_router
 from app.api.metrics import router as metrics_router
@@ -42,6 +43,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Bugfix Assistant API", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings
+
+    if settings.cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origins,
+            allow_methods=["GET", "POST"],
+            allow_headers=["*"],
+        )
 
     @app.get("/healthz", tags=["health"])
     async def healthz() -> dict[str, str]:

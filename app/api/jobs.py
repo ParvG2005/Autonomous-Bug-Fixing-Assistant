@@ -8,8 +8,11 @@ Read-only control-plane surface over the job lifecycle:
 - ``GET /jobs/{job_id}/logs`` — Server-Sent Events: replays the job's progress
   log, then streams new lines until the job reaches a terminal state.
 
-These never mutate state; the worker owns transitions. Approval/reject (which
-*do* mutate) land with the dashboard in a later phase, behind the C1 gate.
+It also owns the C1 human gate: ``POST /jobs/{id}/approve`` and ``/reject``
+*do* mutate — they append an immutable approval decision and drive the state
+machine, but never touch GitHub (the draft-PR publish stays behind
+``bugfix-pr open --confirm``). ``GET /jobs/{id}/artifacts/{kind}`` serves the
+diff / reasoning / trace bodies the dashboard renders.
 """
 
 from __future__ import annotations
@@ -28,12 +31,29 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db, get_session
+from app.db.approvals import record_decision
 from app.db.session import Database
-from app.models.entities import Fix, Job, JobState, Run
+from app.models.entities import (
+    ApprovalDecision,
+    Artifact,
+    ArtifactKind,
+    Fix,
+    Job,
+    JobState,
+    Run,
+)
 from app.workers.progress import read_logs
-from app.workers.state import TERMINAL_STATES
+from app.workers.state import TERMINAL_STATES, InvalidTransition, transition
 
 router = APIRouter(tags=["jobs"])
+
+#: Artifact kinds the dashboard may fetch. ``log`` is streamed via SSE and
+#: ``issue_body`` is untrusted user input — neither is served here.
+_FETCHABLE_ARTIFACTS = {
+    ArtifactKind.DIFF,
+    ArtifactKind.REASONING,
+    ArtifactKind.TRACE,
+}
 
 _SSE_POLL_S = 0.5
 _SSE_MAX_TICKS = 1200  # ~10 min ceiling on a single log stream
@@ -66,6 +86,16 @@ class JobView(BaseModel):
     updated_at: datetime
     runs: list[RunView]
     fix: FixView | None
+
+
+class DecisionBody(BaseModel):
+    actor: str = "dashboard"
+    note: str | None = None
+
+
+class ArtifactView(BaseModel):
+    kind: str
+    content: str
 
 
 def _parse_job_id(job_id: str) -> uuid.UUID:
@@ -142,6 +172,76 @@ async def list_jobs(limit: int = 50, session: AsyncSession = Depends(get_session
         .all()
     )
     return [await _load_job_view(session, job.id) for job in rows]
+
+
+async def _decide(
+    job_id: str,
+    body: DecisionBody | None,
+    decision: ApprovalDecision,
+    to_state: JobState,
+    session: AsyncSession,
+) -> JobView:
+    """Record a human decision (C1) and drive the job state machine.
+
+    Legal only from ``awaiting_approval``; any other state is a 409 and no
+    approval row is written. No remote write happens here.
+    """
+    body = body or DecisionBody()
+    job_uuid = _parse_job_id(job_id)
+    job = (await session.execute(select(Job).where(Job.id == job_uuid))).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "job not found")
+    try:
+        transition(job, to_state)
+    except InvalidTransition as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"job is {exc.frm.value!r}; only an awaiting_approval job can be decided",
+        ) from exc
+    await record_decision(session, job_uuid, decision, actor=body.actor, note=body.note)
+    return await _load_job_view(session, job_uuid)
+
+
+@router.post("/jobs/{job_id}/approve", response_model=JobView)
+async def approve_job(
+    job_id: str,
+    body: DecisionBody | None = None,
+    session: AsyncSession = Depends(get_session),
+) -> JobView:
+    return await _decide(job_id, body, ApprovalDecision.APPROVED, JobState.APPROVED, session)
+
+
+@router.post("/jobs/{job_id}/reject", response_model=JobView)
+async def reject_job(
+    job_id: str,
+    body: DecisionBody | None = None,
+    session: AsyncSession = Depends(get_session),
+) -> JobView:
+    return await _decide(job_id, body, ApprovalDecision.REJECTED, JobState.REJECTED, session)
+
+
+@router.get("/jobs/{job_id}/artifacts/{kind}", response_model=ArtifactView)
+async def get_artifact(
+    job_id: str, kind: str, session: AsyncSession = Depends(get_session)
+) -> ArtifactView:
+    job_uuid = _parse_job_id(job_id)
+    try:
+        artifact_kind = ArtifactKind(kind)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"unknown artifact kind {kind!r}") from exc
+    if artifact_kind not in _FETCHABLE_ARTIFACTS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"artifact kind {kind!r} is not fetchable")
+    artifact = (
+        await session.execute(
+            select(Artifact)
+            .where(Artifact.job_id == job_uuid, Artifact.kind == artifact_kind)
+            .order_by(Artifact.created_at.desc(), Artifact.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if artifact is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no {kind} artifact for this job")
+    return ArtifactView(kind=artifact_kind.value, content=artifact.content or "")
 
 
 def _sse(event: str, payload: dict[str, Any]) -> str:
