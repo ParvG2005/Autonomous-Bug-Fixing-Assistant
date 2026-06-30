@@ -150,6 +150,7 @@ async def _persist_success(
 ) -> JobState:
     async with db.session() as session:
         job = (await session.execute(select(Job).where(Job.id == _as_uuid(job_id)))).scalar_one()
+        repo = (await session.execute(select(Repo).where(Repo.id == job.repo_id))).scalar_one()
 
         agent = result.agent
         metrics = {
@@ -194,7 +195,46 @@ async def _persist_success(
         trace_artifact = _artifact(
             job.id, ArtifactKind.TRACE, json.dumps(trace, indent=2, sort_keys=True)
         )
-        session.add_all([diff_artifact, reasoning_artifact, trace_artifact])
+        artifacts_to_add = [diff_artifact, reasoning_artifact, trace_artifact]
+
+        bundle_artifact = None
+        if agent.edits:
+            from app.vcs.bundle import build_fix_bundle
+            from app.vcs.models import RepoRef
+
+            owner, _, name = repo.full_name.partition("/")
+            bundle = build_fix_bundle(
+                job_id=str(job.id),
+                # `installation_id or 0` is a harmless placeholder: the publish
+                # path (Task 11) re-reads the live Repo.installation_id and
+                # refuses when it is null, so the stored 0 is never used to
+                # mint a token.
+                repo=RepoRef(owner=owner, name=name, installation_id=repo.installation_id or 0),
+                base_branch=repo.default_branch,
+                result=result,
+            )
+            bundle_json = json.dumps(
+                {
+                    "job_id": bundle.job_id,
+                    "repo": {
+                        "owner": owner,
+                        "name": name,
+                        "installation_id": repo.installation_id or 0,
+                    },
+                    "base_branch": bundle.base_branch,
+                    "head_branch": bundle.head_branch,
+                    "title": bundle.title,
+                    "commit_message": bundle.commit_message,
+                    "body": bundle.body,
+                    "changes": [{"path": c.path, "content": c.content} for c in bundle.changes],
+                    "reasoning_comment": bundle.reasoning_comment,
+                },
+                indent=2,
+            )
+            bundle_artifact = _artifact(job.id, ArtifactKind.BUNDLE, bundle_json)
+            artifacts_to_add.append(bundle_artifact)
+
+        session.add_all(artifacts_to_add)
         await session.flush()
 
         wrote_repro = any(e.before == "" and _is_new_test_file(e.path) for e in agent.edits)

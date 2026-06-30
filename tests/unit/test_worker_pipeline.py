@@ -9,6 +9,7 @@ and error paths, plus the queued-state guard (dedup / replay).
 
 from __future__ import annotations
 
+import json
 import shutil
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -182,8 +183,19 @@ async def test_pipeline_runs_to_human_gate(
         assert any("awaiting human approval" in (a.content or "") for a in logs)
 
         # The diff + reasoning were persisted as artifacts.
-        kinds = {a.kind for a in (await session.execute(select(Artifact))).scalars().all()}
+        artifacts = (await session.execute(select(Artifact))).scalars().all()
+        kinds = {a.kind for a in artifacts}
         assert ArtifactKind.DIFF in kinds and ArtifactKind.REASONING in kinds
+
+        # Phase 14 (UI publish): a BUNDLE artifact carries the serialized
+        # FixBundle JSON so the publish path can rebuild it without re-running
+        # the agent.
+        assert ArtifactKind.BUNDLE in kinds
+        bundle_art = next(a for a in artifacts if a.kind is ArtifactKind.BUNDLE)
+        raw = json.loads(bundle_art.content or "{}")
+        assert raw["job_id"] == str(job.id)
+        assert raw["changes"]
+        assert raw["repo"]["owner"] and raw["repo"]["name"]
 
 
 class _RecordingTracer:
