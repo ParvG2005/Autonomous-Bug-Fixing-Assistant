@@ -41,6 +41,7 @@ from app.models.entities import (
     Fix,
     Job,
     JobState,
+    Repo,
     Run,
 )
 from app.workers.progress import read_logs
@@ -256,6 +257,34 @@ async def reject_job(
     session: AsyncSession = Depends(get_session),
 ) -> JobView:
     return await _decide(job_id, body, ApprovalDecision.REJECTED, JobState.REJECTED, session)
+
+
+@router.post("/jobs/{job_id}/publish", status_code=status.HTTP_202_ACCEPTED)
+async def publish_job(
+    job_id: str,
+    session: AsyncSession = Depends(get_session),
+    queue: object | None = Depends(get_queue),
+) -> dict[str, str]:
+    """Enqueue the ``publish_pr`` worker task for an approved, publish-capable job.
+
+    Gated: the job must be ``approved`` and its repo must carry a GitHub App
+    ``installation_id`` (set when the user connects the App). Neither check
+    touches GitHub here — this only enqueues the worker task that does.
+    """
+    job_uuid = _parse_job_id(job_id)
+    job = (await session.execute(select(Job).where(Job.id == job_uuid))).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "job not found")
+    if job.state is not JobState.APPROVED:
+        raise HTTPException(status.HTTP_409_CONFLICT, "approval required before publishing")
+    repo = (await session.execute(select(Repo).where(Repo.id == job.repo_id))).scalar_one()
+    if repo.installation_id is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "connect GitHub App before publishing")
+
+    if not isinstance(queue, JobQueue):
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "worker queue not configured")
+    await queue.enqueue_task("publish_pr", job_id, dedup_key=f"publish:{job_id}")
+    return {"status": "publishing", "job_id": job_id}
 
 
 @router.get("/jobs/{job_id}/artifacts/{kind}", response_model=ArtifactView)
