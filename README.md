@@ -14,7 +14,10 @@ Design docs live in [`docs/`](docs/README.md). Build order is in
   pre-commit, CI, base sandbox image, `.env.example`.
 - ✅ **Phase 1 — repo brain**: clone, tree-sitter Python symbol index, `read_file` / `search`
   (ripgrep) / `find_symbol`, hybrid-retrieval interface (vector fallback optional), CLI.
-- ⬜ Phases 2–14: see the build plan.
+- ✅ **Phase 2 — test runner + sandbox v1**: pytest detection; execution inside a capped,
+  network-isolated, non-root, read-only Docker container (local subprocess fallback for dev);
+  pass/fail parsing + native-traceback `{file, line, function}` frame parser; `bugfix-run` CLI.
+- ⬜ Phases 3–14: see the build plan.
 
 ## Quickstart
 
@@ -38,6 +41,22 @@ uv run repo-brain read   ./workspaces/cachetools src/cachetools/__init__.py --st
 
 `where` prints where the symbol is **defined** (exact, from the tree-sitter index) and **used**
 (word-boundary ripgrep), which is the Phase 1 acceptance behavior.
+
+### Test runner CLI
+
+```bash
+# Build the sandbox image once (Docker; needed for the isolated run path).
+docker build -t bugfix-sandbox:latest -f docker/sandbox.Dockerfile .
+
+# Detect the framework, then run the workspace's tests in a sandbox.
+uv run bugfix-run detect ./workspaces/some-repo
+uv run bugfix-run test   ./workspaces/some-repo          # Docker when present
+uv run bugfix-run test   ./workspaces/some-repo --local  # subprocess fallback (no Docker)
+```
+
+`test` prints pass/fail counts and, per failing test, the exception message and the parsed
+`{file, line, function}` frames — the Phase 2 acceptance behavior. Docker-backed integration
+tests are marked `docker`; run them with `uv run pytest -m docker`.
 
 ## Layout
 
