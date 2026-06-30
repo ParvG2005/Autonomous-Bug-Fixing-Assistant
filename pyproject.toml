@@ -97,6 +97,7 @@ asyncio_mode = "auto"
 markers = [
     "integration: tests that clone real repos / hit the network (deselect with -m 'not integration')",
     "docker: tests that build/run the sandbox image (require Docker; deselect with -m 'not docker')",
+    "redteam: security red-team suite proving SECURITY.md C1-C5 (select with -m redteam)",
 ]
 
 [tool.coverage.run]

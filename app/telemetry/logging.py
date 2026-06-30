@@ -11,6 +11,8 @@ from typing import Any
 
 import structlog
 
+from app.telemetry.redaction import redact_processor
+
 
 def configure_logging(level: str = "INFO") -> None:
     """Configure structlog + stdlib logging for the process (idempotent enough)."""
@@ -21,6 +23,8 @@ def configure_logging(level: str = "INFO") -> None:
             structlog.processors.add_log_level,
             structlog.processors.TimeStamper(fmt="iso"),
             structlog.processors.StackInfoRenderer(),
+            # C4: scrub secrets from every event right before it is rendered.
+            redact_processor,
             structlog.dev.ConsoleRenderer(),
         ],
         wrapper_class=structlog.make_filtering_bound_logger(

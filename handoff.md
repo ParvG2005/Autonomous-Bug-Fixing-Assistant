@@ -3,7 +3,53 @@
 > Running progress log. Update this at the end of every working session: what got done, what's
 > left, and anything the next session needs to know. Most recent entry on top.
 
-## Current status: PHASES 0–8 COMPLETE — multi-language (Python, JS/TS, Go)
+## Current status: PHASES 0–9 COMPLETE — security hardened + red-team suite ⭐
+
+Phase 9 (Security hardening, never cut) proves the five non-negotiable constraints C1–C5 against
+adversarial inputs and closes the one outstanding hardening gap:
+
+- **C4 redaction filter (new code):** `app/telemetry/redaction.py` — a structlog processor
+  (`redact_processor`) that scrubs GitHub token families (`ghp_/gho_/ghu_/ghs_/ghr_`), fine-grained
+  PATs (`github_pat_*`), JWTs (the signed App JWT), and inline `Authorization`/`Bearer`/`token=`
+  header values out of **every** log event, plus value-level redaction for sensitive-named keys
+  (token/secret/password/api_key/…). Recurses into nested dict/list payloads. Wired into
+  `configure_logging` just before the renderer. The reusable `scrub(text)` is what the suite uses to
+  assert a run's trace carries no token. This was the only control SECURITY.md named that wasn't yet
+  in code; C1/C2/C3/C5 were already enforced by Phases 2–8 — Phase 9 is their adversarial proof.
+- **Red-team suite (`tests/redteam/`, marker `redteam`):** dedicated package, `EVIDENCE.md` maps
+  SECURITY.md §5 categories 1–7 → tests. **62 tests, all green offline** (the 3 live-container checks
+  also carry `@pytest.mark.docker` and skip without a daemon; they ran + passed here — Docker present).
+  - **C1 (`test_c1_human_gate.py`):** no-approval refused before any token mint; rejected decision
+    refused; `draft=true` enforced (asserted against the real `GitHubClient` via an httpx
+    `MockTransport` capturing the `/pulls` body); static scan of `app/vcs` for merge / `/merges` /
+    `draft=False` / `--force` → none; the only `"/pulls"` POST in the tree is `github.py`.
+  - **C2 (`test_c2_sandbox.py`):** construction-time proof of the `docker run` flags (`--network none`,
+    `--cap-drop ALL`, `no-new-privileges`, `--read-only`, non-root `10001`, `--pids-limit`, mem cap +
+    swap off, `--rm`, single workspace bind); deployed env refuses the local fallback; **live** egress
+    blocked, rootfs read-only, fork-bomb contained by the PID cap.
+  - **C3 (`test_c3_prompt_injection.py`):** an injection corpus + the malicious argv an obedient agent
+    would emit → every one refused by the allowlist; a compliant scripted model that tries `git push`
+    mid-`solve_issue` is contained (the call is `is_error`); static proof the execution plane
+    (`agent`/`runner`/`sandbox`/`index`) never imports `app.vcs`.
+  - **C4 (`test_c4_secret_isolation.py`):** `InstallationToken` repr/str redaction; `scrub` over each
+    token family + auth header (and leaves ordinary text alone); the processor scrubs keys + embedded
+    secrets + nested payloads; **end-to-end** log scrub via `configure_logging` + `capsys`; auth errors
+    echo no token; the model context assembled across a full `solve_issue` run carries no secret.
+  - **C5 (`test_c5_allowlist.py`):** unknown tool, disallowed commands (git/curl/wget/nc/bash/sh/rm/…),
+    empty argv, path traversal on read+edit, and an argument-shape fuzz set → all default-denied; the
+    command set is pinned so an accidental widening fails the test.
+
+Whole suite: **249 passed, 1 skipped** offline (+8 integration deselected); ruff + format + mypy
+clean; `alembic check` drift-free (Phase 9 added no schema). New runtime deps: none.
+
+**Next session:** Phase 10 (Observability + cost) — structlog is already redaction-safe; add Langfuse
+tracing + cost accounting + metrics. Still open from Phase 7: migrate the APPROVAL store off the JSON
+file onto the `approval` table behind the same `ApprovalStore` protocol, and wire approve/reject
+endpoints + the Phase 5 publish path at the `awaiting_approval` gate.
+
+---
+
+## Earlier: PHASES 0–8 COMPLETE — multi-language (Python, JS/TS, Go)
 
 Phase 8 (Multi-language adapters) generalizes the runner beyond pytest behind a plugin layer:
 
@@ -342,7 +388,8 @@ acceptance tests are in `docs/BUILD_PLAN.md`. Phases not started:
 - [x] Phase 8 — JS/TS + Go adapters (`LanguageAdapter` plugin layer + ordered registry; Pytest/Node/
       Go adapters; generic `run_tests`; allowlist += node/npm/npx/go/pip; per-language sandbox images;
       red→fix→green verified in all three languages)
-- [ ] Phase 9 — security hardening + red-team suite ⭐
+- [x] Phase 9 — security hardening + red-team suite ⭐ (C4 redaction filter; `tests/redteam/`
+      proving C1–C5 across §5 categories 1–7; 62 red-team tests green, live container checks pass)
 - [ ] Phase 10 — observability + cost (structlog, Langfuse, metrics)
 - [ ] Phase 11 — eval harness (SWE-bench-lite + custom set)
 - [ ] Phase 12 — React dashboard (SSE, approve/reject)
@@ -371,6 +418,7 @@ Start Phase 0 scaffold (no external access needed) so Phase 1 can begin the mome
 land. Phase 1's repo-brain CLI is also buildable + testable without Docker or an API key.
 
 ---
-_Last updated: 2026-06-30 — Phase 8 complete (multi-language adapters: Python/JS-TS/Go behind a
-`LanguageAdapter` plugin layer + generic `run_tests`). Node + Go installed on the dev host, so the
-JS/Go acceptance cases now run: **193 passed, 3 skipped**._
+_Last updated: 2026-06-30 — Phase 9 complete (security hardening ⭐): C4 redaction filter added to
+structlog + a dedicated `tests/redteam/` suite proving C1–C5 across SECURITY.md §5 categories 1–7
+(62 red-team tests, live container checks pass). Whole suite: **249 passed, 1 skipped** offline;
+ruff + format + mypy clean; alembic drift-free._
