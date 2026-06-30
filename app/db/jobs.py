@@ -9,6 +9,7 @@ job references it (``issue_body_ref``); it is never inlined on the JOB row.
 from __future__ import annotations
 
 import hashlib
+import uuid
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -139,3 +140,52 @@ async def ingest_labeled_issue(
     await session.flush()
 
     return IngestResult(job=job, created=True)
+
+
+async def ingest_manual_issue(
+    session: AsyncSession,
+    *,
+    repo_id: uuid.UUID,
+    body: str,
+    title: str | None,
+) -> Job:
+    """Create a queued MANUAL job from UI-submitted issue text / stack trace.
+
+    The body is untrusted, so it is stored as an ISSUE_BODY artifact and only
+    referenced from the job (never inlined). There is no GitHub issue number.
+    """
+    repo = (await session.execute(select(Repo).where(Repo.id == repo_id))).scalar_one_or_none()
+    if repo is None:
+        raise ValueError(f"repo {repo_id} not found")
+
+    body = body or ""
+    body_bytes = body.encode("utf-8")
+    artifact = Artifact(
+        job_id=None,  # set after the job exists; artifact is created alongside below
+        kind=ArtifactKind.ISSUE_BODY,
+        storage=ArtifactStorage.INLINE_SMALL,
+        content=body,
+        size_bytes=len(body_bytes),
+        sha256=hashlib.sha256(body_bytes).hexdigest(),
+    )
+
+    job = Job(
+        repo_id=repo.id,
+        gh_issue_number=None,
+        trigger=JobTrigger.MANUAL,
+        issue_title=title,
+        state=JobState.QUEUED,
+        budget=dict(_DEFAULT_BUDGET),
+        cost={},
+    )
+    session.add(job)
+    await session.flush()  # assign job.id
+
+    artifact.job_id = job.id
+    session.add(artifact)
+    await session.flush()
+
+    job.issue_body_ref = artifact.id
+    await session.flush()
+
+    return job
