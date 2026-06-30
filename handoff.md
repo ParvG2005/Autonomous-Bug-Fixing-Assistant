@@ -3,7 +3,37 @@
 > Running progress log. Update this at the end of every working session: what got done, what's
 > left, and anything the next session needs to know. Most recent entry on top.
 
-## Current status: PHASES 0–4 COMPLETE — issue text → verified patch + writeup ⭐
+## Current status: PHASES 0–5 COMPLETE — verified patch → human-gated draft PR ⭐
+
+Phase 5 (GitHub integration, never cut) adds the **remote-write plane** in `app/vcs`, the sole
+owner of GitHub mutations:
+
+- `approval.py` — the **C1 human gate**, persisted append-only (latest decision wins; a reversal
+  is a new record). `assert_approved` is the single chokepoint; `InMemoryApprovalStore` (tests)
+  and `JsonFileApprovalStore` (CLI, `./.bugfix/approvals.jsonl`) until Postgres lands in Phase 6.
+- `auth.py` — GitHub App **RS256 JWT → short-lived installation token** (C4). `InstallationToken`
+  redacts its value in `repr`/`str`; `now` is injected so JWT signing is deterministic/testable.
+- `github.py` — REST client with a **draft-PR-only** surface: Git Data API commit (blob→tree→
+  commit→ref), `open_draft_pr` (always `draft=true`), `comment`. **No merge / push-to-base
+  method exists** (asserted by a test).
+- `publish.py` — `open_draft_pr_for_fix`, the **only remote write**: asserts approval *first*
+  (no token minted otherwise), then mints-uses-discards the token, commits, opens the draft PR,
+  posts the writeup as a comment. Store + minter injected → fully offline-testable.
+- `bundle.py` — bridges a Phase 4 `SolveResult` → a credential-free `FixBundle`.
+- `cli.py` — `bugfix-pr approve|reject|status|open`. `open` is **STOP-AND-ASK** (`--confirm`).
+
+40 vcs unit tests (incl. the C1/C4 invariants); the real-PR acceptance is
+`tests/integration/test_pr_acceptance.py`, skipped unless a disposable test repo + App creds are
+in the env. Whole suite: 130 passed offline, ruff + mypy clean. New deps: `httpx`, `pyjwt[crypto]`.
+
+**Next session:** Phase 6 (FastAPI + Postgres/Alembic + webhook) — move the APPROVAL store to a
+real `approvals` table behind the same `ApprovalStore` protocol, and wire the webhook→job path.
+Before the first *real* PR: create + install the GitHub App on a test repo, set the env vars, run
+the integration acceptance.
+
+---
+
+## Earlier: PHASES 0–4 COMPLETE — issue text → verified patch + writeup ⭐
 
 Phases 0–4 are built, tested, and lint/type-clean. On top of the Phase 3 agent loop, Phase 4
 (the core milestone, never cut) takes **raw issue text or a stack trace** and produces a

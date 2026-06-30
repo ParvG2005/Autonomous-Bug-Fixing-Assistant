@@ -16,6 +16,8 @@ dependencies = [
     "tree-sitter>=0.23",
     "tree-sitter-python>=0.23",
     "anthropic>=0.113.0",
+    "httpx>=0.27",
+    "pyjwt[crypto]>=2.9",
 ]
 
 [project.optional-dependencies]
@@ -30,6 +32,7 @@ vector = [
 repo-brain = "app.index.cli:app"
 bugfix-run = "app.runner.cli:app"
 bugfix-agent = "app.agent.cli:app"
+bugfix-pr = "app.vcs.cli:app"
 
 [dependency-groups]
 dev = [

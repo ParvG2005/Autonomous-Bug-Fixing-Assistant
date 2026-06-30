@@ -29,7 +29,16 @@ Design docs live in [`docs/`](docs/README.md). Build order is in
   (`app.agent.guardrails`) flag — never silently edit — CI config / lockfiles / secrets and cap
   the diff size; a deterministic Markdown reasoning writeup + change summary (`app.agent.writeup`);
   orchestrated by `app.agent.solve` and the `bugfix-agent solve` CLI.
-- ⬜ Phases 5–14: see the build plan.
+- ✅ **Phase 5 — GitHub integration (human-gated)** ⭐ never cut: GitHub App install-token
+  auth (`app.vcs.auth`, RS256 JWT → short-lived installation token, redacted in memory); a
+  REST client with **no merge / no push-to-base / draft-PR-only** surface (`app.vcs.github`,
+  Git Data API commit); the **APPROVAL gate** (`app.vcs.approval`) — append-only, latest-wins,
+  with `assert_approved` the single chokepoint; the **sole remote-write path**
+  (`app.vcs.publish`) that asserts approval *first*, then mints-uses-discards the token, opens a
+  **draft** PR, and posts the reasoning as a comment; a Phase 4 → bundle bridge
+  (`app.vcs.bundle`) and the `bugfix-pr` CLI. Maps to SECURITY.md **C1** (human gate) and
+  **C4** (secret isolation). Real-PR acceptance is marked `integration` + STOP-AND-ASK.
+- ⬜ Phases 6–14: see the build plan.
 
 ## Quickstart
 
@@ -99,6 +108,26 @@ failing test when none exists), fix, and verify, then prints the diff plus a Mar
 writeup — the Phase 4 core milestone. Edits to CI config, lockfiles, or secret-bearing files are
 **flagged and refused, never silently applied**, and the diff is size-capped. The API-backed
 acceptance is marked `integration`.
+
+### Draft-PR CLI (the human gate)
+
+```bash
+# The remote-write plane. Decisions persist to ./.bugfix/approvals.jsonl (append-only).
+uv run bugfix-pr approve job-123 --actor parv --note "looks right"
+uv run bugfix-pr status  job-123
+uv run bugfix-pr reject  job-123 --actor parv      # a reversal is a new record
+
+# Open the DRAFT PR for an approved job (the ONLY remote write in the system).
+# Refuses without an `approved` record; --confirm is required to actually push.
+uv run bugfix-pr open    job-123 --bundle fix.json --confirm
+```
+
+The `open` path asserts the APPROVAL record **before** minting any GitHub token (SECURITY.md
+C1); the short-lived installation token is minted inside `app/vcs`, used, and discarded, never
+logged (C4). PRs are always `draft=true`; there is no merge or push-to-default code path
+anywhere in the client. Opening the first real PR is a **STOP-AND-ASK** gate — the acceptance
+test (`tests/integration/test_pr_acceptance.py`) only runs with a disposable test repo + App
+credentials in the environment.
 
 ## Layout
 
