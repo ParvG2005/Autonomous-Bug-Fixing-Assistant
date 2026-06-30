@@ -19,6 +19,7 @@ from app.agent.client import make_create_message
 from app.core.settings import Settings, get_settings
 from app.db.session import Database
 from app.telemetry.logging import configure_logging, get_logger
+from app.workers.control_tasks import connect_repo, publish_pr, scan_repo
 from app.workers.pipeline import run_pipeline
 from app.workers.queue import JobQueue, create_job_queue, redis_settings
 from app.workers.recovery import recover_stuck_jobs
@@ -70,7 +71,7 @@ def _worker_redis_settings() -> object:
 class WorkerSettings:
     """arq worker configuration (discovered by ``arq <module>.WorkerSettings``)."""
 
-    functions: ClassVar[list[Callable[..., Any]]] = [run_job]
+    functions: ClassVar[list[Callable[..., Any]]] = [run_job, connect_repo, scan_repo, publish_pr]
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = _worker_redis_settings()
