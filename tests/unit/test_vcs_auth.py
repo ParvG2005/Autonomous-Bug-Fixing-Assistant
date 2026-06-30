@@ -38,9 +38,7 @@ def _rsa_pem() -> tuple[str, str]:
 def test_build_app_jwt_roundtrips() -> None:
     private_pem, public_pem = _rsa_pem()
     token = build_app_jwt("12345", private_pem, now=_NOW)
-    claims = jwt.decode(
-        token, public_pem, algorithms=["RS256"], options={"verify_exp": False}
-    )
+    claims = jwt.decode(token, public_pem, algorithms=["RS256"], options={"verify_exp": False})
     assert claims["iss"] == "12345"
     assert claims["iat"] == _NOW - 60  # backdated for skew
     assert claims["exp"] > _NOW

@@ -32,9 +32,7 @@ def _solve_result() -> SolveResult:
 
 def test_build_fix_bundle_packs_changes_title_and_writeup() -> None:
     repo = RepoRef(owner="acme", name="calc", installation_id=2)
-    bundle = build_fix_bundle(
-        job_id="job-1", repo=repo, base_branch="main", result=_solve_result()
-    )
+    bundle = build_fix_bundle(job_id="job-1", repo=repo, base_branch="main", result=_solve_result())
     assert bundle.head_branch == "bugfix/job-1"
     assert bundle.title == "Fix: divide by zero"
     assert [c.path for c in bundle.changes] == ["calc.py"]
