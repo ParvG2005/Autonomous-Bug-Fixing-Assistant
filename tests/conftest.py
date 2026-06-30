@@ -23,6 +23,17 @@ async def db_session(tmp_path: Path) -> AsyncIterator[AsyncSession]:
         await database.dispose()
 
 
+@pytest.fixture
+async def db(tmp_path: Path) -> AsyncIterator[Database]:
+    """A fresh ``Database`` (SQLite-backed) whose ``.session()`` is usable directly."""
+    database = Database(f"sqlite+aiosqlite:///{tmp_path / 'control.db'}")
+    await database.create_all()
+    try:
+        yield database
+    finally:
+        await database.dispose()
+
+
 _SAMPLE = '''\
 """Sample module for repo-brain tests."""
 
