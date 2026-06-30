@@ -116,7 +116,7 @@ def get_tracer(settings: Settings | None = None) -> Tracer:
     if not (settings.langfuse_public_key and settings.langfuse_secret_key):
         return NullTracer()
     try:
-        from langfuse import Langfuse  # type: ignore[import-not-found]
+        from langfuse import Langfuse
     except ImportError:
         log.warning("langfuse_not_installed")
         return NullTracer()
