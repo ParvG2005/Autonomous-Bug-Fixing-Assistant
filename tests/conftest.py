@@ -2,9 +2,26 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.session import Database
+
+
+@pytest.fixture
+async def db_session(tmp_path: Path) -> AsyncIterator[AsyncSession]:
+    """A fresh async SQLite-backed session, schema created via ``Base.metadata``."""
+    database = Database(f"sqlite+aiosqlite:///{tmp_path / 'test.db'}")
+    await database.create_all()
+    try:
+        async with database.sessionmaker() as session:
+            yield session
+    finally:
+        await database.dispose()
+
 
 _SAMPLE = '''\
 """Sample module for repo-brain tests."""
