@@ -186,6 +186,56 @@ async def test_pipeline_runs_to_human_gate(
         assert ArtifactKind.DIFF in kinds and ArtifactKind.REASONING in kinds
 
 
+class _RecordingTracer:
+    """A fake Tracer: records what it was handed, returns a fixed external id."""
+
+    def __init__(self) -> None:
+        self.emitted: list[dict[str, Any]] = []
+
+    def emit(self, trace: dict[str, Any], *, name: str) -> str | None:
+        self.emitted.append(trace)
+        return "trace-abc123"
+
+
+async def test_pipeline_records_cost_and_replayable_trace(
+    db: Database, failing_project: Path, tmp_path: Path
+) -> None:
+    import json
+
+    job_id = await _seed_job(db)
+    tracer = _RecordingTracer()
+
+    await run_pipeline(
+        db,
+        job_id,
+        create_message=_fix_script().create,
+        settings=_settings(tmp_path),
+        prepare_workspace=_copy_from(failing_project),
+        sandbox=LocalSandbox(),
+        tracer=tracer,
+    )
+
+    async with db.session() as session:
+        job = (await session.execute(select(Job))).scalar_one()
+        # Cost accounting: USD figure derived from token spend.
+        assert job.cost["cost_usd"] > 0
+        assert job.cost["input_tokens"] > 0
+
+        # A replayable TRACE artifact captures every tool call.
+        artifacts = (await session.execute(select(Artifact))).scalars().all()
+        trace_art = next(a for a in artifacts if a.kind is ArtifactKind.TRACE)
+        trace = json.loads(trace_art.content or "{}")
+        assert trace["tool_calls"]  # the edit_file call is recorded
+        assert trace["cost"]["cost_usd"] == job.cost["cost_usd"]
+
+        # The external trace id is stamped on the verify run.
+        runs = {r.phase: r for r in (await session.execute(select(Run))).scalars().all()}
+        assert runs[RunPhase.VERIFY].langfuse_trace_id == "trace-abc123"
+
+    # The tracer was actually invoked with the trace.
+    assert tracer.emitted and tracer.emitted[0]["tool_calls"]
+
+
 async def test_pipeline_unresolved_fails(
     db: Database, failing_project: Path, tmp_path: Path
 ) -> None:

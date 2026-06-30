@@ -13,6 +13,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api.jobs import router as jobs_router
+from app.api.metrics import router as metrics_router
 from app.api.webhooks import router as webhooks_router
 from app.core.settings import Settings, get_settings
 from app.db.session import Database
@@ -48,6 +49,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(webhooks_router)
     app.include_router(jobs_router)
+    app.include_router(metrics_router)
     return app
 
 

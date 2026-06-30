@@ -61,6 +61,7 @@ class JobView(BaseModel):
     issue_title: str | None
     failure_reason: str | None
     cost: dict[str, Any]
+    cost_usd: float
     created_at: datetime
     updated_at: datetime
     runs: list[RunView]
@@ -101,6 +102,7 @@ async def _load_job_view(session: AsyncSession, job_uuid: uuid.UUID) -> JobView:
         issue_title=job.issue_title,
         failure_reason=job.failure_reason,
         cost=job.cost or {},
+        cost_usd=float((job.cost or {}).get("cost_usd", 0.0) or 0.0),
         created_at=job.created_at,
         updated_at=job.updated_at,
         runs=[

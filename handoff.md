@@ -3,7 +3,49 @@
 > Running progress log. Update this at the end of every working session: what got done, what's
 > left, and anything the next session needs to know. Most recent entry on top.
 
-## Current status: PHASES 0–9 COMPLETE — security hardened + red-team suite ⭐
+## Current status: PHASES 0–10 COMPLETE — observability + cost accounting
+
+Phase 10 (Observability + cost) makes any past run reconstructable and reports cost per job. It
+also fixes a Phase 9 CI regression first (see below).
+
+- **Phase 9 CI fix (`app/sandbox/docker.py`):** the three live-container red-team checks in
+  `test_c2_sandbox.py` were gated on `docker_available()` — which only checks the `docker` CLI is on
+  PATH. CI has the CLI but never builds `bugfix-sandbox:latest`, so the tests *ran* under
+  `pytest -m "not integration"` and failed with exit 125 ("Unable to find image"). Added
+  `image_available(image)` (`docker image inspect`) and re-gated the live tests on it, so they skip
+  cleanly without a built image and still run where it exists. Unit-covered (`test_sandbox_image.py`).
+- **Cost accounting (`app/telemetry/cost.py`):** a per-model price table ($/Mtok in+out) →
+  `cost_usd(model, in, out)` and `cost_breakdown(...)`. Resolves a context suffix (`claude-opus-4-8[1m]`
+  → base price); unknown model costs `0.0`. The pipeline now writes the full breakdown (incl.
+  `cost_usd`) onto `job.cost`, surfaced as `cost_usd` on the job API view.
+- **Tracing (`app/telemetry/tracing.py`):** `build_trace(result, model=…)` distills a `SolveResult`
+  into a JSON, **secret-free** (Phase-9 `scrub` over every string) record of the run — every tool call
+  (name/args/result), plan, localization, token usage, and USD cost. Persisted as a new
+  `ArtifactKind.TRACE` artifact → **a run is reconstructable offline, no model re-run, no Langfuse**.
+  A `Tracer` protocol mirrors it to Langfuse (`LangfuseTracer`, lazy SDK import) and returns the trace
+  id (stamped on the verify `Run.langfuse_trace_id`); `get_tracer(settings)` returns a `NullTracer`
+  when keys/SDK are absent (the offline default). New optional extra `observability = [langfuse]`.
+- **Metrics (`app/telemetry/metrics.py` + `app/api/metrics.py`):** pure aggregation over `JobOutcome`
+  value objects → resolve rate, regression rate (edited-but-unresolved / edited), mean time-to-fix
+  (resolved only), cost-per-fix, total spend. `GET /metrics` maps ORM rows (Job+Fix+cost+timestamps)
+  onto it. Unit + ASGI-over-SQLite covered.
+
+Acceptance (Phase 10): cost per job reported (`job.cost.cost_usd`, `/metrics`); any past run
+reconstructable from the TRACE artifact (+ existing diff/reasoning artifacts) without re-running the
+model. New code is injectable + offline-testable (recording fake tracer in the pipeline test). Whole
+suite: **270 passed, 4 skipped** offline (+8 integration deselected); ruff + format + mypy clean;
+`alembic check` drift-free (TRACE is a VARCHAR enum value → no DDL). New runtime deps: none (langfuse
+is an optional extra).
+
+**Next session:** Phase 11 (Eval harness) — SWE-bench-lite + custom buggy-commit set, resolve-rate +
+regression-rate scoring (reuse `app.telemetry.metrics`), one command prints the headline number.
+Still open from Phase 7: migrate the APPROVAL store off the JSON file onto the `approval` table behind
+the same `ApprovalStore` protocol, and wire approve/reject endpoints + the Phase 5 publish path at the
+`awaiting_approval` gate.
+
+---
+
+## Earlier: PHASES 0–9 COMPLETE — security hardened + red-team suite ⭐
 
 Phase 9 (Security hardening, never cut) proves the five non-negotiable constraints C1–C5 against
 adversarial inputs and closes the one outstanding hardening gap:
@@ -390,7 +432,8 @@ acceptance tests are in `docs/BUILD_PLAN.md`. Phases not started:
       red→fix→green verified in all three languages)
 - [x] Phase 9 — security hardening + red-team suite ⭐ (C4 redaction filter; `tests/redteam/`
       proving C1–C5 across §5 categories 1–7; 62 red-team tests green, live container checks pass)
-- [ ] Phase 10 — observability + cost (structlog, Langfuse, metrics)
+- [x] Phase 10 — observability + cost (cost accounting + USD price table; replayable secret-free
+      TRACE artifact + Langfuse mirror; resolve/regression/time-to-fix/cost-per-fix metrics + `/metrics`)
 - [ ] Phase 11 — eval harness (SWE-bench-lite + custom set)
 - [ ] Phase 12 — React dashboard (SSE, approve/reject)
 - [ ] Phase 13 — deploy + CI/CD (Fly.io, migrations, rollback)
@@ -418,7 +461,8 @@ Start Phase 0 scaffold (no external access needed) so Phase 1 can begin the mome
 land. Phase 1's repo-brain CLI is also buildable + testable without Docker or an API key.
 
 ---
-_Last updated: 2026-06-30 — Phase 9 complete (security hardening ⭐): C4 redaction filter added to
-structlog + a dedicated `tests/redteam/` suite proving C1–C5 across SECURITY.md §5 categories 1–7
-(62 red-team tests, live container checks pass). Whole suite: **249 passed, 1 skipped** offline;
-ruff + format + mypy clean; alembic drift-free._
+_Last updated: 2026-06-30 — Phase 10 complete (observability + cost): per-model USD cost accounting,
+a replayable secret-free TRACE artifact + optional Langfuse mirror, and resolve/regression/
+time-to-fix/cost-per-fix metrics behind `GET /metrics`. Also fixed a Phase 9 CI regression
+(live red-team docker tests now gate on the image, not just the CLI). Whole suite: **270 passed,
+4 skipped** offline; ruff + format + mypy clean; alembic drift-free._

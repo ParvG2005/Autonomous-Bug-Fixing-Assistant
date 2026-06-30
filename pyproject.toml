@@ -33,6 +33,11 @@ vector = [
     "psycopg[binary]>=3.2",
     "pgvector>=0.3",
 ]
+# Langfuse trace mirroring (Phase 10). Optional: the replayable TRACE artifact is
+# the offline source of truth; without this dep the tracer is a no-op.
+observability = [
+    "langfuse>=2.0",
+]
 
 [project.scripts]
 repo-brain = "app.index.cli:app"

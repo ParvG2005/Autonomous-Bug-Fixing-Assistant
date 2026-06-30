@@ -20,6 +20,7 @@ fixture clone — no Redis, no Docker, no network.
 from __future__ import annotations
 
 import asyncio
+import json
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -47,7 +48,9 @@ from app.models.entities import (
     RunStatus,
 )
 from app.sandbox.base import Sandbox
+from app.telemetry.cost import cost_breakdown
 from app.telemetry.logging import get_logger
+from app.telemetry.tracing import Tracer, build_trace, get_tracer
 from app.workers.progress import record_log
 from app.workers.state import transition
 
@@ -137,7 +140,14 @@ async def _start(db: Database, job_id: str) -> tuple[RepoInfo, str, str | None, 
     return repo_info, body, title, budget
 
 
-async def _persist_success(db: Database, job_id: str, result: SolveResult) -> JobState:
+async def _persist_success(
+    db: Database,
+    job_id: str,
+    result: SolveResult,
+    *,
+    model: str,
+    tracer: Tracer,
+) -> JobState:
     async with db.session() as session:
         job = (await session.execute(select(Job).where(Job.id == _as_uuid(job_id)))).scalar_one()
 
@@ -147,6 +157,12 @@ async def _persist_success(db: Database, job_id: str, result: SolveResult) -> Jo
             "input_tokens": agent.usage.input_tokens,
             "output_tokens": agent.usage.output_tokens,
         }
+
+        # Phase 10: build the replayable trace, mirror it to Langfuse (no-op
+        # offline), and stamp the external id on the authoritative verify run.
+        trace = build_trace(result, model=model)
+        trace_id = tracer.emit(trace, name=f"job:{job_id}")
+
         session.add(
             Run(
                 job_id=job.id,
@@ -168,13 +184,17 @@ async def _persist_success(db: Database, job_id: str, result: SolveResult) -> Jo
                 job_id=job.id,
                 phase=RunPhase.VERIFY,
                 status=RunStatus.OK if result.resolved else RunStatus.FAIL,
+                langfuse_trace_id=trace_id,
                 metrics={"resolved": result.resolved, "stop_reason": agent.stop_reason.value},
             )
         )
 
         diff_artifact = _artifact(job.id, ArtifactKind.DIFF, agent.diff)
         reasoning_artifact = _artifact(job.id, ArtifactKind.REASONING, result.writeup)
-        session.add_all([diff_artifact, reasoning_artifact])
+        trace_artifact = _artifact(
+            job.id, ArtifactKind.TRACE, json.dumps(trace, indent=2, sort_keys=True)
+        )
+        session.add_all([diff_artifact, reasoning_artifact, trace_artifact])
         await session.flush()
 
         wrote_repro = any(e.before == "" and _is_new_test_file(e.path) for e in agent.edits)
@@ -192,8 +212,7 @@ async def _persist_success(db: Database, job_id: str, result: SolveResult) -> Jo
         )
 
         job.cost = {
-            "input_tokens": agent.usage.input_tokens,
-            "output_tokens": agent.usage.output_tokens,
+            **cost_breakdown(model, agent.usage.input_tokens, agent.usage.output_tokens),
             "iterations": agent.iterations,
         }
 
@@ -245,6 +264,7 @@ async def run_pipeline(
     prepare_workspace: PrepareWorkspace | None = None,
     sandbox: Sandbox | None = None,
     solve: SolveFn | None = None,
+    tracer: Tracer | None = None,
     keep_workspace: bool = False,
 ) -> JobState:
     """Run one job end to end and return its final state.
@@ -254,6 +274,7 @@ async def run_pipeline(
     """
     prepare_workspace = prepare_workspace or _default_prepare_workspace
     solve = solve or solve_issue
+    tracer = tracer or get_tracer(settings)
 
     claimed = await _start(db, job_id)
     if claimed is None:
@@ -276,7 +297,7 @@ async def run_pipeline(
             sandbox=sandbox,
             budget=budget,
         )
-        return await _persist_success(db, job_id, result)
+        return await _persist_success(db, job_id, result, model=settings.agent_model, tracer=tracer)
     except Exception as exc:
         log.error("pipeline_error", job_id=job_id, error=str(exc))
         return await _fail(db, job_id, f"{type(exc).__name__}: {exc}")

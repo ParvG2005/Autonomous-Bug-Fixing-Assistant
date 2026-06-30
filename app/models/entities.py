@@ -64,6 +64,7 @@ class ArtifactKind(enum.StrEnum):
     LOG = "log"
     REASONING = "reasoning"
     ISSUE_BODY = "issue_body"
+    TRACE = "trace"  # replayable agent trace (Phase 10); VARCHAR enum -> no migration
 
 
 class ArtifactStorage(enum.StrEnum):
