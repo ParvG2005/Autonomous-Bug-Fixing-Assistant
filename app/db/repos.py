@@ -13,9 +13,9 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import Job, JobState, Repo
+from app.models.entities import Job, Repo
+from app.workers.state import LIVE_STATES
 
-_LIVE = (JobState.QUEUED, JobState.RUNNING, JobState.AWAITING_APPROVAL, JobState.APPROVED)
 _URL_RE = re.compile(r"github\.com[:/]+([\w.-]+)/([\w.-]+?)(?:\.git)?/?$")
 _SHORT_RE = re.compile(r"^([\w.-]+)/([\w.-]+?)(?:\.git)?$")
 
@@ -54,7 +54,7 @@ async def list_repos(session: AsyncSession) -> list[Repo]:
 async def delete_repo(session: AsyncSession, repo_id: uuid.UUID) -> None:
     live = (
         await session.execute(
-            select(Job.id).where(Job.repo_id == repo_id, Job.state.in_(_LIVE)).limit(1)
+            select(Job.id).where(Job.repo_id == repo_id, Job.state.in_(LIVE_STATES)).limit(1)
         )
     ).first()
     if live is not None:
