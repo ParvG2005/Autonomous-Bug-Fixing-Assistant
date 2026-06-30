@@ -81,6 +81,7 @@ name = "bugfix-assistant"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "anthropic" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "rich" },
@@ -91,9 +92,6 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-agent = [
-    { name = "anthropic" },
-]
 vector = [
     { name = "pgvector" },
     { name = "psycopg", extra = ["binary"] },
@@ -110,7 +108,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anthropic", marker = "extra == 'agent'", specifier = ">=0.40" },
+    { name = "anthropic", specifier = ">=0.113.0" },
     { name = "pgvector", marker = "extra == 'vector'", specifier = ">=0.3" },
     { name = "psycopg", extras = ["binary"], marker = "extra == 'vector'", specifier = ">=3.2" },
     { name = "pydantic", specifier = ">=2.7" },
@@ -121,7 +119,7 @@ requires-dist = [
     { name = "tree-sitter-python", specifier = ">=0.23" },
     { name = "typer", specifier = ">=0.12" },
 ]
-provides-extras = ["vector", "agent"]
+provides-extras = ["vector"]
 
 [package.metadata.requires-dev]
 dev = [

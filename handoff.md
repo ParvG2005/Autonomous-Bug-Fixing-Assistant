@@ -3,11 +3,47 @@
 > Running progress log. Update this at the end of every working session: what got done, what's
 > left, and anything the next session needs to know. Most recent entry on top.
 
-## Current status: PHASES 0 + 1 + 2 COMPLETE — runner executes tests in a sandbox
+## Current status: PHASES 0 + 1 + 2 + 3 COMPLETE — agent turns a failing test green
 
-Phases 0–2 are built, tested, and lint/type-clean. The test runner detects pytest, executes it
-inside a capped ephemeral Docker container, and parses results into structured failures with
-`{file, line, function}` frames. Next: Phase 3 (agent loop — Anthropic key is set).
+Phases 0–3 are built, tested, and lint/type-clean. On top of the repo brain (Phase 1) and the
+sandboxed test runner (Phase 2), the Phase 3 agent loop drives an Anthropic tool-use loop that
+reads/searches the repo, edits the source, runs tests in the sandbox, and self-corrects within
+a budget — producing a diff that turns a known failing test green. Next: Phase 4 (issue →
+reproduce → localize → fix → explain, the core milestone).
+
+### Session 4 (2026-06-30) — Phase 3: agent loop (core)
+
+- **`app/agent`:** `models.py` (`AgentBudget` = iterations/token/time ceilings, `AgentResult`,
+  `ToolCall`, `FileEdit`, `TokenUsage`, `StopReason`); `edit.py` (`apply_edit` — unique-match
+  str-replace confined to the workspace via the Phase 1 traversal guard, empty `old_str` creates
+  a file; `unified_diff` coalesces multiple edits to the same file into one net diff);
+  `tools.py` (six Anthropic tool schemas + `ToolExecutor` wrapping `RepoBrain`/sandbox/edit, with
+  **`Allowlist.check_tool` enforced before every dispatch** and `check_command` gating
+  `run_command`; tool errors are returned to the model with `is_error=True`, never raised; results
+  capped at 8k chars); `prompts.py` (system prompt + planning prompt + task builder); `loop.py`
+  (`AgentLoop` — manual tool-use loop, **not** the SDK runner, so the allowlist gates dispatch and
+  the budget is enforced turn-by-turn; planning step, `thinking={"type":"adaptive"}` +
+  `output_config={"effort":"high"}`, `pause_turn`/`refusal` handling, early-stop when the model's
+  own run is green, then an **authoritative final `run_pytest` verification** decides `resolved`);
+  `client.py` (`make_create_message` factory — injects `anthropic.Anthropic().messages.create`;
+  key from settings, never logged); `cli.py` (`bugfix-agent fix` Typer command).
+- **Deps/wiring:** `anthropic==0.113.0` moved into core deps (was the optional `agent` extra);
+  `bugfix-agent` script registered in `pyproject`.
+  - **Acceptance ✅:** `tests/integration/test_agent_acceptance.py` (marked `integration`, skips
+    without `ANTHROPIC_API_KEY`) — agent fixes a one-line factorial off-by-one and the target test
+    goes green. Verified against the real API. Also confirmed the `bugfix-agent fix` CLI end-to-end
+    on a separate `average()` bug (diff produced, `RESOLVED`).
+  - **Offline tests:** scripted-fake-client loop tests (planning, tool dispatch, edit application,
+    stop-reason handling, iteration budget, token accounting), tool dispatcher + allowlist tests
+    (real `RepoBrain`/`LocalSandbox`, no API/Docker), and edit/diff tests. Full offline suite:
+    62 passed, 1 skipped; ruff + mypy clean.
+  - **Gotcha:** a single-command Typer app collapses the subcommand name, so a `@app.callback()`
+    no-op is added to keep `bugfix-agent fix` explicit (matches `bugfix-run`). The model sometimes
+    emits pseudo `<tool_call>` text *inside* the planning turn — harmless narration; real tool
+    calls only go through the loop's tool-use blocks.
+  - **Note (egress):** the agent loop makes real Anthropic API calls — the first deliberate
+    network egress in the project. The acceptance run is one small fix; keep `integration` runs
+    intentional (they cost tokens).
 
 ### Session 3 (2026-06-30) — Phase 2: test runner + sandbox v1
 
@@ -98,7 +134,8 @@ acceptance tests are in `docs/BUILD_PLAN.md`. Phases not started:
       deferred — interface only, needs Postgres)
 - [x] Phase 2 — test runner + sandbox v1 (pytest detect, capped Docker container, native-tb
       frame parser; local subprocess fallback; `bugfix-run` CLI)
-- [ ] Phase 3 — agent loop (needs Anthropic key)
+- [x] Phase 3 — agent loop (Anthropic tool-use loop; allowlisted tools; planning + budget;
+      `bugfix-agent` CLI; turns a known failing test green)
 - [ ] Phase 4 — issue→reproduce→localize→fix→explain ⭐ core milestone
 - [ ] Phase 5 — GitHub integration, human-gated draft PR ⭐
 - [ ] Phase 6 — FastAPI + Postgres/Alembic + webhook

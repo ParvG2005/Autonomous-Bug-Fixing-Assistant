@@ -15,6 +15,7 @@ dependencies = [
     "structlog>=24.1",
     "tree-sitter>=0.23",
     "tree-sitter-python>=0.23",
+    "anthropic>=0.113.0",
 ]
 
 [project.optional-dependencies]
@@ -24,14 +25,11 @@ vector = [
     "psycopg[binary]>=3.2",
     "pgvector>=0.3",
 ]
-# Pulled in by later phases; declared here so the scaffold is forward-compatible.
-agent = [
-    "anthropic>=0.40",
-]
 
 [project.scripts]
 repo-brain = "app.index.cli:app"
 bugfix-run = "app.runner.cli:app"
+bugfix-agent = "app.agent.cli:app"
 
 [dependency-groups]
 dev = [

@@ -82,3 +82,35 @@ def failing_project(tmp_path: Path) -> Path:
     (tmp_path / "calc.py").write_text(_CALC, encoding="utf-8")
     (tmp_path / "test_calc.py").write_text(_TEST_CALC, encoding="utf-8")
     return tmp_path
+
+
+# A project with a single, genuinely fixable bug for the Phase 3 agent loop:
+# factorial iterates range(1, n) instead of range(1, n + 1), so it is off by the
+# final factor. The one fix turns the whole (one-test) suite green.
+_MATHUTIL = '''\
+"""Arithmetic helpers under test."""
+
+
+def factorial(n):
+    result = 1
+    for i in range(1, n):
+        result *= i
+    return result
+'''
+
+_TEST_MATHUTIL = """\
+from mathutil import factorial
+
+
+def test_factorial():
+    assert factorial(1) == 1
+    assert factorial(5) == 120
+"""
+
+
+@pytest.fixture
+def agent_fixable(tmp_path: Path) -> Path:
+    """A pytest project with one failing test fixable by a one-line source change."""
+    (tmp_path / "mathutil.py").write_text(_MATHUTIL, encoding="utf-8")
+    (tmp_path / "test_mathutil.py").write_text(_TEST_MATHUTIL, encoding="utf-8")
+    return tmp_path

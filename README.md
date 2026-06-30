@@ -17,7 +17,12 @@ Design docs live in [`docs/`](docs/README.md). Build order is in
 - ✅ **Phase 2 — test runner + sandbox v1**: pytest detection; execution inside a capped,
   network-isolated, non-root, read-only Docker container (local subprocess fallback for dev);
   pass/fail parsing + native-traceback `{file, line, function}` frame parser; `bugfix-run` CLI.
-- ⬜ Phases 3–14: see the build plan.
+- ✅ **Phase 3 — agent loop (core)**: Anthropic tool-use loop (`claude-opus-4-8`, adaptive
+  thinking) with six tools — `read_file` / `search` / `find_symbol` / `edit_file` /
+  `run_tests` / `run_command` — every call gated by the `app.core.allowlist` validator before
+  dispatch and every execution tool run inside the sandbox; a planning step, a retry/token/
+  time budget, and an authoritative final-test verification; `bugfix-agent` CLI.
+- ⬜ Phases 4–14: see the build plan.
 
 ## Quickstart
 
@@ -57,6 +62,22 @@ uv run bugfix-run test   ./workspaces/some-repo --local  # subprocess fallback (
 `test` prints pass/fail counts and, per failing test, the exception message and the parsed
 `{file, line, function}` frames — the Phase 2 acceptance behavior. Docker-backed integration
 tests are marked `docker`; run them with `uv run pytest -m docker`.
+
+### Agent CLI
+
+```bash
+# Needs ANTHROPIC_API_KEY (see .env.example). The agent reads/searches the repo,
+# edits the source, runs tests in the sandbox, and self-corrects within a budget.
+uv run bugfix-agent fix ./workspaces/some-repo \
+  --task "test_foo.py fails: bar() returns the wrong value; fix the bug." \
+  --target test_foo.py     # restrict the final verification run
+uv run bugfix-agent fix ./workspaces/some-repo --task "..." --local   # no Docker
+```
+
+`fix` prints the plan, the unified diff of its edits, and a `RESOLVED` / `UNRESOLVED`
+verdict from an authoritative final test run — the Phase 3 acceptance behavior. The
+API-backed acceptance test is marked `integration` (skips without a key); run it with
+`uv run pytest -m integration`.
 
 ## Layout
 
