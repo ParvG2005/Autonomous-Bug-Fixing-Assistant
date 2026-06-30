@@ -101,3 +101,79 @@ async def test_scan_repo_clones_and_scans(db, monkeypatch, tmp_path):
     assert result == "scanned"
     assert calls["clone"][0] == "https://github.com/octo/demo.git"
     assert calls["scan"] == ("octo/demo", False)
+
+
+@pytest.mark.asyncio
+async def test_publish_pr_opens_draft(db, monkeypatch):
+    # Build a repo (with install), a job, an approved decision, and a BUNDLE artifact.
+    import json
+
+    from app.db.approvals import record_decision
+    from app.db.jobs import ingest_manual_issue
+    from app.db.repos import create_repo
+    from app.models.entities import ApprovalDecision, Artifact, ArtifactKind
+
+    async with db.session() as s:
+        repo = await create_repo(s, "octo/demo")
+        repo.installation_id = 999
+        job = await ingest_manual_issue(s, repo_id=repo.id, body="x", title="t")
+        await record_decision(s, job.id, ApprovalDecision.APPROVED, actor="me")
+        s.add(
+            Artifact(
+                job_id=job.id,
+                kind=ArtifactKind.BUNDLE,
+                storage=__import__(
+                    "app.models.entities", fromlist=["ArtifactStorage"]
+                ).ArtifactStorage.INLINE_SMALL,
+                content=json.dumps(
+                    {
+                        "job_id": str(job.id),
+                        "repo": {"owner": "octo", "name": "demo", "installation_id": 0},
+                        "base_branch": "main",
+                        "head_branch": f"bugfix/{job.id}",
+                        "title": "Fix: t",
+                        "commit_message": "Fix: t",
+                        "body": "b",
+                        "changes": [{"path": "a.py", "content": "print(1)\n"}],
+                        "reasoning_comment": "why",
+                    }
+                ),
+                size_bytes=1,
+                sha256="x",
+            )
+        )
+        await s.commit()
+        jid = str(job.id)
+
+    class FakePR:
+        number = 7
+        url = "https://github.com/octo/demo/pull/7"
+
+    def fake_publish(bundle, *, store, token_minter, **kw):
+        assert bundle.repo.installation_id == 999  # live id, not the stored 0
+        return FakePR()
+
+    monkeypatch.setattr("app.workers.control_tasks.open_draft_pr_for_fix", fake_publish)
+    monkeypatch.setattr(
+        "app.workers.control_tasks.settings_token_minter",
+        lambda s, *, now: lambda iid: "tok",
+    )
+
+    ctx = {"db": db, "settings": get_settings()}
+    result = await control_tasks.publish_pr(ctx, jid)
+    assert result == "https://github.com/octo/demo/pull/7"
+
+
+@pytest.mark.asyncio
+async def test_publish_pr_refuses_without_install(db):
+    from app.db.jobs import ingest_manual_issue
+    from app.db.repos import create_repo
+
+    async with db.session() as s:
+        repo = await create_repo(s, "octo/demo")  # installation_id None
+        job = await ingest_manual_issue(s, repo_id=repo.id, body="x", title="t")
+        await s.commit()
+        jid = str(job.id)
+    ctx = {"db": db, "settings": object()}
+    result = await control_tasks.publish_pr(ctx, jid)
+    assert result == "not_publish_capable"
