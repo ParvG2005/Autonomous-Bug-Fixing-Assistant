@@ -3,11 +3,40 @@
 > Running progress log. Update this at the end of every working session: what got done, what's
 > left, and anything the next session needs to know. Most recent entry on top.
 
-## Current status: PHASES 0 + 1 COMPLETE — repo brain working end-to-end
+## Current status: PHASES 0 + 1 + 2 COMPLETE — runner executes tests in a sandbox
 
-Phase 0 (scaffold) and Phase 1 (repo brain) are built, tested, and lint/type-clean. Docker is
-up and the Anthropic key is set in the environment (ready for Phases 2–3). Next: Phase 2 (test
-runner + sandbox v1, needs Docker).
+Phases 0–2 are built, tested, and lint/type-clean. The test runner detects pytest, executes it
+inside a capped ephemeral Docker container, and parses results into structured failures with
+`{file, line, function}` frames. Next: Phase 3 (agent loop — Anthropic key is set).
+
+### Session 3 (2026-06-30) — Phase 2: test runner + sandbox v1
+
+- **`app/sandbox`:** `ResourceLimits` (cpus/memory/pids/timeout, **network off by default**) +
+  `ExecResult`. `Sandbox` Protocol with `run()` + `mount_point()`. `DockerSandbox` — one
+  `docker run` per command: `--rm`, `--network none`, `--cpus/--memory/--memory-swap/--pids-limit`,
+  `--cap-drop ALL`, `--security-opt no-new-privileges`, `--read-only` + `--tmpfs /tmp`,
+  non-root `10001`, single `/workspace` bind mount; named container force-killed on wall-clock
+  timeout (via `docker` CLI subprocess — no SDK dep, matches `clone.py`). `LocalSandbox` —
+  dev-only subprocess fallback (timeout + best-effort POSIX rlimits). `get_sandbox()` picks
+  Docker when present, **refuses the local fallback in deployed envs**.
+- **`app/runner`:** `detect_framework` (pytest via config tables / `pytest.ini` / `conftest.py` /
+  `test_*.py`, skipping vendored dirs); runs `pytest -q --tb=native -rfE -p no:cacheprovider`;
+  `trace.parse_frames` pulls `File "...", line N, in func` frames from native tracebacks;
+  `parse.build_failures` stitches summary counts + short-summary node ids + per-failure frames,
+  **filtering to in-workspace frames** (drops pytest/pluggy/stdlib noise) by relativizing against
+  the sandbox's `mount_point` (`/workspace` for Docker, host path for local). `run_pytest` ties
+  detect → execute → parse. `bugfix-run` Typer CLI (`detect` / `test`, `--local` flag).
+- **Image:** `docker/sandbox.Dockerfile` now installs `pytest>=8.2`. Build:
+  `docker build -t bugfix-sandbox:latest -f docker/sandbox.Dockerfile .`
+  - **Acceptance ✅:** known-failing project → `FAILED 1 passed, 2 failed` with frames
+    `test_calc.py:N → calc.py:N in divide`. Verified both via `LocalSandbox` (offline unit test)
+    and the real Docker container (integration, marked `docker`). A no-egress test confirms the
+    container can't open a network socket. Full suite: 45 passed, 1 skipped; ruff + mypy clean.
+  - **Gotcha:** `--tb=native` includes the full pytest/pluggy frame stack; the in-workspace
+    filter is what isolates the user's code. When captured/narrow, pytest's summary line has **no
+    `=` decoration** (`2 failed, 1 passed in 0.01s`) — `parse_counts` keys on the `in <n>s`
+    duration, not the banners.
+  - New pytest marker `docker` (deselect with `-m 'not docker'`); needs the image + Docker.
 
 ### Session 2 (2026-06-30) — what got built
 
@@ -67,7 +96,8 @@ acceptance tests are in `docs/BUILD_PLAN.md`. Phases not started:
 - [x] Phase 0 — project scaffold (target layout, pyproject 3.12, lint/type/test, compose, CI stub)
 - [x] Phase 1 — repo brain (clone, tree-sitter index, read_file/search/find_symbol; pgvector
       deferred — interface only, needs Postgres)
-- [ ] Phase 2 — test runner + sandbox v1 (needs Docker)
+- [x] Phase 2 — test runner + sandbox v1 (pytest detect, capped Docker container, native-tb
+      frame parser; local subprocess fallback; `bugfix-run` CLI)
 - [ ] Phase 3 — agent loop (needs Anthropic key)
 - [ ] Phase 4 — issue→reproduce→localize→fix→explain ⭐ core milestone
 - [ ] Phase 5 — GitHub integration, human-gated draft PR ⭐

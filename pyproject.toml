@@ -31,6 +31,7 @@ agent = [
 
 [project.scripts]
 repo-brain = "app.index.cli:app"
+bugfix-run = "app.runner.cli:app"
 
 [dependency-groups]
 dev = [
@@ -81,6 +82,7 @@ testpaths = ["tests"]
 addopts = "-q --strict-markers"
 markers = [
     "integration: tests that clone real repos / hit the network (deselect with -m 'not integration')",
+    "docker: tests that build/run the sandbox image (require Docker; deselect with -m 'not docker')",
 ]
 
 [tool.coverage.run]
