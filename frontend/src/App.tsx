@@ -3,6 +3,7 @@ import { getJob, listJobs } from "./api";
 import { FindingsList } from "./components/FindingsList";
 import { JobDetail } from "./components/JobDetail";
 import { JobList } from "./components/JobList";
+import { NewFixModal } from "./components/NewFixModal";
 import { RepoList } from "./components/RepoList";
 import type { Job } from "./types";
 
@@ -22,6 +23,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Job | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showNew, setShowNew] = useState(false);
 
   const refreshJobs = useCallback(async () => {
     try {
@@ -96,6 +98,15 @@ export default function App() {
       ) : (
         <div className="grid flex-1 grid-cols-1 md:grid-cols-[20rem_1fr]">
           <aside className="border-r border-slate-200 bg-white">
+            <div className="flex justify-end border-b border-slate-200 px-3 py-2">
+              <button
+                type="button"
+                onClick={() => setShowNew(true)}
+                className="rounded bg-slate-800 px-3 py-1 text-sm font-medium text-white"
+              >
+                + New Fix
+              </button>
+            </div>
             <JobList jobs={jobs} selectedId={selectedId} onSelect={setSelectedId} />
           </aside>
           <main>
@@ -106,6 +117,16 @@ export default function App() {
             )}
           </main>
         </div>
+      )}
+      {showNew && (
+        <NewFixModal
+          onClose={() => setShowNew(false)}
+          onCreated={(job) => {
+            setShowNew(false);
+            void refreshJobs();
+            setSelectedId(job.id);
+          }}
+        />
       )}
     </div>
   );
