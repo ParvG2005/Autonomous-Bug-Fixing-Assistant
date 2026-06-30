@@ -3,7 +3,64 @@
 > Running progress log. Update this at the end of every working session: what got done, what's
 > left, and anything the next session needs to know. Most recent entry on top.
 
-## Current status: PHASES 0–12 COMPLETE — React dashboard (watch live + approve)
+## Current status: PHASES 0–14 COMPLETE — proactive discovery + one-command dev + many languages
+
+This session built the two optional post-12 phases and broadened the language coverage.
+
+**Phase 13 — Proactive bug discovery (`app/discovery/`).** Detectors emit cheap, noisy
+`Candidate`s in the sandbox (`sources/`: `tests` = run-the-suite failing tests; `static` =
+mypy/ruff; `diff` = untested churn hotspots), behind a `Detector` protocol + `ScanContext`.
+`scan_repo` fans them out (per-detector errors swallowed); `triage` dedups (fingerprint = rule +
+line-bucketed location + symbol), ranks (confidence × severity), and **budget-caps** promotions;
+`promote.candidate_to_task` renders a candidate to issue text and **parses it back** into the same
+`IssueTask` the webhook produces (render→parse round-trip — one code path). New `scan` + `finding`
+tables (`finding.fingerprint` **unique per repo** → a re-scan never refiles) + migration
+`a1b2c3d4e5f6` (also widens `job.trigger` VARCHAR for the new `discovery`/`scrape` values).
+`app/db/discovery.py` persists scans/findings and `promote_candidate` files a `trigger="discovery"`
+JOB through the **unchanged** pipeline. `bugfix-scan` CLI is spend-gated (`--confirm` to promote, like
+eval). `/findings` + `/scans` API + a dashboard **Findings tab** (one-click promote = human gate at
+discovery, §9). **Reproduction is the precision filter** — a candidate that won't go red is dropped
+before any fix spend.
+
+**Phase 14 — one-command local dev (`npm run dev`).** `app/db/bootstrap.py` (`bugfix-bootstrap`):
+`--reset` truncates the job-history tables (children-first), **refusing unless `APP_ENV=local`**
+(`ResetNotAllowed`); `--scrape` pulls open GitHub issues via the new read-only
+`GitHubClient.list_open_issues` (reusing Phase 5 install-token auth) and enqueues each through the
+**same** `ingest_labeled_issue` path (`trigger="scrape"`, capped by `SCRAPE_MAX_JOBS`). The reset +
+scrape logic is injectable (fake `IssueSource`) and SQLite-tested. `frontend/package.json` `dev`
+orchestrates (via `concurrently` + `wait-on`) compose → `alembic upgrade` → bootstrap → API + worker
++ Vite under one Ctrl-C; `predev` sequences the infra steps. New `SCRAPE_*` settings + `.env.example`
++ README Quickstart. The C1 human gate is unchanged — scraped jobs still stop at `awaiting_approval`.
+
+**Phase 8 extension — many more language adapters.** New `app/runner/adapters/common.py`
+(`BaseRegexAdapter`: exit-code + regex result parsing, shared `relativize`/`parse_frames_with`) backs
+six new adapters — **Rust** (`cargo test`), **Ruby** (RSpec), **Java/Kotlin** (Maven + Gradle),
+**.NET** (`dotnet test`), **PHP** (PHPUnit), **Elixir** (`mix test`) — each with detect/install/build/
+parse_frames/parse_result, a sandbox image (`docker/sandbox.{rust,ruby,jvm,dotnet,php,elixir}.Dockerfile`),
+and `Framework` enum members. Registered in the ordered registry (manifest-keyed, no detection
+collisions). Allowlist `commands` widened to the new test toolchains (cargo/ruby/bundle/rspec/rake/
+mvn/gradle/dotnet/php/phpunit/composer/mix) — but **not** git/curl/scanners: the discovery detectors
+call the sandbox directly, so the agent never gains git/push reach (C5 lock test updated to match).
+
+Acceptance — all offline: `tests/integration/test_discovery_acceptance.py` (scan → promote → reproduce
+→ verify green → `awaiting_approval`; re-scan dedups), `tests/unit/test_discovery_{finding,triage,scan}.py`,
+`tests/unit/test_api_findings.py`, `tests/unit/test_db_bootstrap.py`, `tests/unit/test_adapter_extra.py`,
+`frontend/src/__tests__/FindingsList.test.tsx`. Whole offline Python suite: **336 passed, 1 skipped**
+(integration deselected; the one env-sensitive `test_vcs_auth` case passes when `.env` has no GitHub
+creds — it's green in CI). ruff + format + mypy clean; `alembic check` drift-free. Frontend: **14
+vitest tests** pass, `tsc` clean. New Python runtime deps: none; new frontend dev deps: `concurrently`,
+`wait-on`.
+
+**Next session:** **Phase 15 (Deploy + CI/CD)** — dockerize all services, Fly.io with managed Postgres
++ Redis + secrets, GitHub Actions test→build→push→deploy, migrations on deploy, healthchecks, rollback;
+the deploy start must be **non-destructive** (migrations only — never `--reset`/auto-scrape). Then
+**Phase 16 (docs + demo + final eval number)**. Discovery follow-ups: the runtime (Sentry/Datadog) and
+LLM-review detector sources are stubbed out by design (cut #1) — add behind the same `Detector` protocol
+if precision warrants; consider a scheduled nightly scan (cron) per repo.
+
+---
+
+## Earlier: PHASES 0–12 COMPLETE — React dashboard (watch live + approve)
 
 Phase 12 (Dashboard) closes the loop: a human can watch a fix stream in and approve it from a
 browser. It also lands the approve/reject wiring that was open since Phase 7 — the dashboard button
@@ -46,12 +103,23 @@ suite: **305 passed, 4 skipped** offline (+9 integration deselected); ruff + for
 (`CORSMiddleware` ships with FastAPI). Frontend deps are isolated under `frontend/` (gitignored
 `node_modules/` + `dist/`).
 
-**Next session:** Phase 13 (Deploy + CI/CD) — dockerize all services, Fly.io with managed Postgres +
-Redis + secrets, GitHub Actions test→build→push→deploy, migrations on deploy, healthchecks, rollback.
-Serve the built `frontend/dist` from the API (or a static host) so the dashboard is same-origin in
-prod. Still optional: auto-publish on approve (wire `open_draft_pr_for_fix` behind the approve
-endpoint once GitHub creds live in the API process — crosses a stop-and-ask gate), and a real
-SWE-bench-lite number.
+**Phase renumber (this session):** two new optional phases were inserted after Phase 12 (design
+only): **Phase 13 — Proactive bug discovery** (`docs/PHASE13_BUG_DISCOVERY.md`) and **Phase 14 —
+One-command local dev / `npm run dev`** (`docs/PHASE14_DEV_ORCHESTRATION.md`). Deploy is now
+**Phase 15** and Docs is **Phase 16**. Both 13 and 14 are optional and off the critical path
+(cut #0 / #0b).
+
+**Next session:** **Phase 13 (Proactive bug discovery)** if pursuing it — `app/discovery/` sources +
+`scan`/`finding` tables + `bugfix-scan` CLI, feeding synthetic `IssueTask`s into the existing flow;
+reproduction is the false-positive filter. **Phase 14 (one-command `npm run dev`)** is the other
+optional add — compose + uv API/worker + Vite under one command, with a `bugfix-bootstrap` that
+wipes the dev DB then scrapes open GitHub issues into the pipeline on startup (dev-only, gated by
+`APP_ENV=local` + `SCRAPE_MAX_JOBS`). Otherwise skip to **Phase 15 (Deploy + CI/CD)** — dockerize
+all services, Fly.io with managed Postgres + Redis + secrets, GitHub Actions
+test→build→push→deploy, migrations on deploy, healthchecks, rollback; serve `frontend/dist`
+same-origin from the API. Still optional: auto-publish on approve (wire `open_draft_pr_for_fix`
+behind the approve endpoint once GitHub creds live in the API process — crosses a stop-and-ask
+gate), and a real SWE-bench-lite number.
 
 ---
 
@@ -504,7 +572,7 @@ provided by Parv before any execution-dependent code is built.
 - [x] `docs/SEQUENCE_DIAGRAMS.md` — webhook→job, worker pipeline, human gate→draft PR, live SSE.
 - [x] `docs/SECURITY.md` — threat model, trust boundaries, the 5 constraints mapped to controls
       + tests, red-team suite plan, residual risks.
-- [x] `docs/BUILD_PLAN.md` — phases 0–14 with goals/deliverables/acceptance/deps/size/risk,
+- [x] `docs/BUILD_PLAN.md` — phases 0–16 with goals/deliverables/acceptance/deps/size/risk,
       dependency graph, critical path, cut-order, stop-and-ask gates.
 - [x] `docs/README.md` — index of the above.
 
@@ -538,12 +606,19 @@ acceptance tests are in `docs/BUILD_PLAN.md`. Phases not started:
       `bugfix-eval run` prints the headline number — real-API baseline 100% (3/3), $0.208)
 - [x] Phase 12 — React dashboard (Vite+React+Tailwind; list/detail/diff/reasoning; live SSE log;
       approve/reject wired to the C1 gate + DB approval store + CORS; offline-tested backend + Vitest)
-- [ ] Phase 13 — deploy + CI/CD (Fly.io, migrations, rollback)
-- [ ] Phase 14 — docs + demo + final eval number
+- [x] Phase 13 — proactive bug discovery (`app/discovery/` detectors → triage → promote; `scan`/
+      `finding` tables; `bugfix-scan` CLI; `/findings` + `/scans` API + dashboard Findings tab;
+      offline acceptance reproduce→verify→awaiting_approval + re-scan dedup)
+- [x] Phase 14 — one-command local dev (`bugfix-bootstrap` wipe-then-scrape, `APP_ENV=local` guard,
+      `list_open_issues`; `npm run dev` orchestration via concurrently + wait-on; `SCRAPE_*` settings)
+- [x] Phase 8+ — extended language adapters (Rust, Ruby, Java/Kotlin Maven+Gradle, .NET, PHP, Elixir;
+      shared `BaseRegexAdapter`; sandbox images; allowlist + registry wired)
+- [ ] Phase 15 — deploy + CI/CD (Fly.io, migrations, rollback)  *(was Phase 13)*
+- [ ] Phase 16 — docs + demo + final eval number  *(was Phase 14)*
 
 ## Blockers / needed before building
 
-1. **Docker** access (Phases 2, 3, 7, 9, 13 depend on it). Sandbox here has none.
+1. **Docker** access (Phases 2, 3, 7, 9, 13, 14, 15 depend on it). Sandbox here has none.
 2. **Anthropic API key** for the agent loop (Phases 3, 4) — provided at runtime, never committed.
 3. **GitHub App** created + installed on a test repo (Phase 5) — app id, private key, webhook
    secret, installation id. Required before any real PR.
@@ -563,9 +638,10 @@ Start Phase 0 scaffold (no external access needed) so Phase 1 can begin the mome
 land. Phase 1's repo-brain CLI is also buildable + testable without Docker or an API key.
 
 ---
-_Last updated: 2026-06-30 — Phase 12 complete (React dashboard): list runs, run detail with diff +
-reasoning trace, live SSE log, and approve/reject buttons wired to the C1 human gate (new
-`POST /jobs/{id}/approve|reject` + DB-backed `app/db/approvals.py` + artifact-fetch endpoint + dev
-CORS; record + transition only, publish still gated). Frontend is Vite + React 18 + Tailwind 3 under
-`frontend/`. Whole Python suite: **305 passed, 4 skipped** offline; ruff + format + mypy clean; alembic
-drift-free. Frontend: 12 vitest tests + `npm run build` green._
+_Last updated: 2026-06-30 — Phases 13 + 14 complete and the language-adapter set extended. Phase 13:
+proactive discovery (`app/discovery/` detectors → triage → promote; `scan`/`finding` tables + migration;
+`bugfix-scan`; `/findings` + `/scans` + dashboard Findings tab; reproduction is the precision filter).
+Phase 14: one-command `npm run dev` (`bugfix-bootstrap` wipe-then-scrape, `APP_ENV=local` guard,
+`list_open_issues`). Adapters: Rust/Ruby/JVM(Maven+Gradle)/.NET/PHP/Elixir on a shared `BaseRegexAdapter`.
+Whole offline Python suite: **336 passed, 1 skipped**; ruff + format + mypy clean; alembic drift-free.
+Frontend: **14 vitest tests** + `tsc` green._

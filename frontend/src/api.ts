@@ -1,7 +1,7 @@
 // Thin typed client over the control-plane API. Relative URLs so the same build
 // works behind the Vite dev proxy and same-origin in production.
 
-import type { ArtifactKind, ArtifactView, Job } from "./types";
+import type { ArtifactKind, ArtifactView, Finding, Job } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -59,4 +59,15 @@ export function rejectJob(id: string, actor: string, note?: string): Promise<Job
 
 export function logStreamUrl(id: string): string {
   return `/jobs/${id}/logs`;
+}
+
+// --- Phase 13: proactive discovery ---
+
+export function listFindings(limit = 100): Promise<Finding[]> {
+  return request<Finding[]>(`/findings?limit=${limit}`);
+}
+
+/** Promote a finding to a queued discovery job (human gate at discovery). */
+export function promoteFinding(id: string): Promise<Finding> {
+  return request<Finding>(`/findings/${id}/promote`, { method: "POST" });
 }

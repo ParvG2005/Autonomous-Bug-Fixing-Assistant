@@ -49,6 +49,16 @@ class Settings(BaseSettings):
         default_factory=lambda: ["http://localhost:5173", "http://127.0.0.1:5173"]
     )
 
+    # --- Dev bootstrap / scrape (Phase 14, dev-only) ---
+    #: Let ``npm run dev`` run the wipe+scrape bootstrap on startup.
+    scrape_on_start: bool = False
+    #: Issue label to pull (empty / ``--all-issues`` = every open issue).
+    scrape_label: str = "autofix"
+    #: Safety cap on how many jobs a single scrape enqueues.
+    scrape_max_jobs: int = 10
+    #: Installed repos to scrape, ``owner/repo`` each.
+    scrape_repos: list[str] = Field(default_factory=list)
+
     # --- GitHub App (Phase 5+) ---
     github_app_id: str | None = None
     github_app_private_key: SecretStr | None = None

@@ -8,11 +8,14 @@ reasoning trace, and approve/reject at the C1 human gate.
 ```bash
 cd frontend
 npm install
-npm run dev        # http://localhost:5173, proxies /jobs|/metrics|/healthz -> :8000
+npm run dev        # Phase 14: boots the WHOLE stack (compose + migrate + bootstrap + API + worker + vite)
+npm run dev:web    # frontend only — vite on :5173, proxies /jobs|/metrics|/healthz|/findings|/scans -> :8000
 ```
 
-Run the API alongside it (`bugfix-api`, default `:8000`). Override the proxy target with
-`VITE_API_TARGET=http://host:port npm run dev`.
+`npm run dev` is the one-command local stack (see the root README Quickstart): it wipes-then-scrapes
+open issues into the pipeline on startup (dev-only, `APP_ENV=local`). For a frontend-only loop against
+a separately-run API (`bugfix-api`, default `:8000`), use `npm run dev:web` and override the proxy
+target with `VITE_API_TARGET=http://host:port npm run dev:web`.
 
 ## Test & build
 
@@ -26,7 +29,8 @@ npm run build      # tsc --noEmit && vite build -> dist/
 - `src/api.ts` — typed client (relative URLs; `ApiError` carries the server detail).
 - `src/hooks/useJobStream.ts` — EventSource over `GET /jobs/{id}/logs`.
 - `src/components/` — `JobList`, `JobDetail` (status, runs, fix, live log, diff, reasoning,
-  approve/reject), `StatusBadge`, `DiffView`.
+  approve/reject), `StatusBadge`, `DiffView`, `FindingsList` (Phase 13 discovery tab — list
+  candidates + one-click promote).
 
 In production, serve `dist/` from the API (or a static host) so the dashboard is same-origin and CORS
 is unnecessary.

@@ -90,8 +90,18 @@ async def _existing_live_job(
     )
 
 
-async def ingest_labeled_issue(session: AsyncSession, ref: IssueRef) -> IngestResult:
-    """Create (or return) a queued job for a labeled issue. Idempotent per live job."""
+async def ingest_labeled_issue(
+    session: AsyncSession,
+    ref: IssueRef,
+    *,
+    trigger: JobTrigger = JobTrigger.WEBHOOK,
+) -> IngestResult:
+    """Create (or return) a queued job for a labeled issue. Idempotent per live job.
+
+    ``trigger`` records provenance — the webhook passes ``webhook`` (default), the
+    Phase 14 dev bootstrap passes ``scrape``. The ingest path is otherwise
+    identical, so scraped issues flow through the same queue → worker → human gate.
+    """
     repo = await _upsert_repo(session, ref)
 
     existing = await _existing_live_job(session, repo.id, ref.gh_issue_number)
@@ -112,7 +122,7 @@ async def ingest_labeled_issue(session: AsyncSession, ref: IssueRef) -> IngestRe
     job = Job(
         repo_id=repo.id,
         gh_issue_number=ref.gh_issue_number,
-        trigger=JobTrigger.WEBHOOK,
+        trigger=trigger,
         issue_title=ref.issue_title,
         state=JobState.QUEUED,
         budget=dict(_DEFAULT_BUDGET),

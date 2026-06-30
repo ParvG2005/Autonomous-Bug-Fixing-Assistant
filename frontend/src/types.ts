@@ -46,6 +46,27 @@ export interface ArtifactView {
   content: string;
 }
 
+// --- Phase 13: proactive discovery ---
+export type FindingStatus =
+  | "candidate"
+  | "reproduced"
+  | "promoted"
+  | "dismissed"
+  | "duplicate";
+
+/** Mirrors FindingView in app/api/findings.py. */
+export interface Finding {
+  id: string;
+  scan_id: string;
+  source: string;
+  summary: string;
+  severity: string;
+  confidence: number;
+  status: FindingStatus;
+  job_id: string | null;
+  created_at: string;
+}
+
 /** A job state is terminal (or awaiting a decision) when no log stream remains open. */
 export const STREAM_CLOSED_STATES: ReadonlySet<JobState> = new Set<JobState>([
   "awaiting_approval",

@@ -22,6 +22,13 @@ class Framework(StrEnum):
     PYTEST = "pytest"  # Python
     NODE_TEST = "node-test"  # JS/TS — node's built-in test runner
     GO_TEST = "go-test"  # Go — `go test`
+    CARGO_TEST = "cargo-test"  # Rust — `cargo test`
+    RSPEC = "rspec"  # Ruby — rspec / minitest via rake
+    MAVEN = "maven"  # Java/Kotlin (JVM) — `mvn test`
+    GRADLE = "gradle"  # Java/Kotlin (JVM) — `gradle test`
+    DOTNET = "dotnet"  # C#/F#/.NET — `dotnet test`
+    PHPUNIT = "phpunit"  # PHP — phpunit
+    MIX_TEST = "mix-test"  # Elixir — `mix test`
 
 
 class Outcome(StrEnum):

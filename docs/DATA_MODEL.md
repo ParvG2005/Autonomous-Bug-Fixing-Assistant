@@ -14,6 +14,9 @@ erDiagram
     RUN ||--o{ ARTIFACT : "emits"
     FIX ||--o{ ARTIFACT : "references"
     REPO ||--o{ CODE_CHUNK : "indexed as"
+    REPO ||--o{ SCAN : "hunted by"
+    SCAN ||--o{ FINDING : "yields"
+    FINDING ||--o| JOB : "promoted to"
 
     REPO {
         uuid id PK
@@ -28,7 +31,8 @@ erDiagram
         uuid id PK
         uuid repo_id FK
         bigint gh_issue_number
-        string trigger "webhook|manual|eval"
+        uuid finding_id "nullable; set when promoted from discovery"
+        string trigger "webhook|manual|eval|discovery|scrape"
         text issue_title
         text issue_body_ref "artifact id, not inline"
         string state "see state machine"
@@ -92,6 +96,30 @@ erDiagram
         vector embedding "pgvector"
         timestamptz indexed_at
     }
+    SCAN {
+        uuid id PK
+        uuid repo_id FK
+        string trigger "scheduled|manual|push"
+        string state "running|done|failed"
+        jsonb sources_run
+        jsonb budget "max_jobs"
+        timestamptz created_at
+    }
+    FINDING {
+        uuid id PK
+        uuid scan_id FK
+        uuid repo_id FK
+        string source "tests|static|runtime|diff|review"
+        string fingerprint "dedup key, unique per repo"
+        text summary
+        text evidence "untrusted-as-artifact"
+        jsonb frames
+        float confidence
+        string severity
+        string status "candidate|reproduced|promoted|dismissed|duplicate"
+        uuid job_id FK "nullable; set on promotion"
+        timestamptz created_at
+    }
 ```
 
 ## 2. Table notes
@@ -111,6 +139,13 @@ erDiagram
 - **APPROVAL** — **the human gate, persisted.** No remote write happens unless an `approved`
   row exists for the job. Immutable once written; a reversal is a new row.
 - **CODE_CHUNK** — pgvector embeddings for fallback semantic retrieval; rebuilt per repo index.
+- **SCAN** (Phase 13) — one proactive bug-hunt over a repo. `sources_run` records which detectors
+  ran; `budget` caps how many findings may be promoted to jobs.
+- **FINDING** (Phase 13) — a discovery candidate. `fingerprint` (rule id + normalized location +
+  symbol) is **unique per repo**, so a re-scan can never refile a known finding. `evidence` holds
+  untrusted scanner/stacktrace output, treated as an artifact (never executed at rest). On
+  promotion, `status` becomes `promoted` and `job_id` links the discovery JOB (which carries
+  `finding_id` back). Reproduction — not the finder — is the precision filter.
 
 ## 3. Job state machine
 

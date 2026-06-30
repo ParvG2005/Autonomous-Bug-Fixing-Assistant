@@ -65,7 +65,20 @@ Design docs live in [`docs/`](docs/README.md). Build order is in
   (`docker/sandbox.{python,node,go}.Dockerfile`) carry each toolchain, selected by detected language.
   Acceptance: a verified red→fix→green run in each of Python, JS/TS, Go
   (`tests/integration/test_multilang_acceptance.py`).
-- ⬜ Phases 9–14: see the build plan.
+- ✅ **Phase 13 — proactive bug discovery** (optional): `app.discovery` turns a repo into a *job
+  source*. Detectors (`sources/`: existing-test failures, mypy/ruff static analysis, diff/hotspot)
+  emit cheap, noisy `Candidate`s in the sandbox; `triage` dedups (fingerprint, unique per repo),
+  ranks (confidence × severity), and budget-caps them; a survivor becomes the **same synthetic
+  `IssueTask`** the webhook produces and a `trigger="discovery"` job — so reproduce → fix → verify →
+  human-gated draft PR is unchanged. **Reproduction is the precision filter.** New `scan`/`finding`
+  tables, `bugfix-scan` CLI (spend-gated like eval), `/findings` + `/scans` API, and a dashboard
+  Findings tab with one-click promote.
+- ✅ **Phase 14 — one-command local dev** (optional, dev-only): `npm run dev` boots the whole
+  stack and opens a freshly-populated dashboard (see Quickstart). New `bugfix-bootstrap`
+  (`app.db.bootstrap`): `--reset` wipes job tables (guarded to `APP_ENV=local`), `--scrape` pulls
+  open GitHub issues (reusing Phase 5 auth) and enqueues each via the existing ingest path
+  (`trigger="scrape"`, capped by `SCRAPE_MAX_JOBS`). The human gate is unchanged.
+- ⬜ Phases 9, 15–16: see the build plan (Deploy is now Phase 15, Docs Phase 16).
 
 ## Quickstart
 
@@ -173,12 +186,49 @@ signature is a flat 401. Labeling an issue `autofix` enqueues exactly one **queu
 deliveries are idempotent) — the Phase 6 acceptance behavior, covered offline against SQLite in
 `tests/unit/test_webhook.py`. Any other event, action, or label is acknowledged and ignored.
 
+### Proactive discovery (Phase 13)
+
+```bash
+# Scan a registered repo's local checkout for latent bugs. Without --confirm it
+# records candidates as findings only (no spend); --confirm promotes the top
+# findings to jobs that then flow to the existing approve/draft-PR gate.
+uv run bugfix-scan run --repo owner/name --path ./workspaces/name
+uv run bugfix-scan run --repo owner/name --path ./workspaces/name --max-jobs 5 --confirm
+```
+
+Discovery reads and executes untrusted code, so detectors run **only in the sandbox** — no new
+trust boundary, and the only GitHub mutation remains the human-gated draft PR. A re-scan never
+refiles a known finding (fingerprint dedup). The dashboard's **Findings** tab lists candidates and
+promotes them with one click. Offline-tested end-to-end in
+`tests/integration/test_discovery_acceptance.py`.
+
+### One-command local dev (`npm run dev`, Phase 14)
+
+```bash
+cp .env.example .env      # set APP_ENV=local, ANTHROPIC_API_KEY, SCRAPE_REPOS, GitHub App creds
+cd frontend && npm install
+npm run dev               # boots the whole stack, opens a freshly-populated dashboard
+```
+
+`npm run dev` (dev-only) sequences then supervises: `docker compose up -d postgres redis` (waits
+on 5432/6379) → `alembic upgrade head` → `bugfix-bootstrap --reset --scrape` (**wipe then scrape**:
+empty the job tables, pull open issues from `SCRAPE_REPOS`/`SCRAPE_LABEL`, enqueue up to
+`SCRAPE_MAX_JOBS`) → `concurrently` runs `bugfix-api` + `bugfix-worker` + `vite` under one Ctrl-C.
+Open http://localhost:5173 and watch the scraped issues move `queued → running →
+awaiting_approval`. Scraped jobs still stop at the C1 human gate; re-running is idempotent.
+
+> `--reset` deletes dev job history and the scrape auto-enqueues token-spending jobs — both gated
+> (`APP_ENV=local`, `SCRAPE_MAX_JOBS`, `SCRAPE_ON_START=false` to disable). Deploy (Phase 15) uses
+> its own non-destructive start and never wipes or auto-scrapes. For a frontend-only loop against a
+> separately-run API, use `npm run dev:web`.
+
 ## Layout
 
 ```
 app/
-  api/        HTTP surface — FastAPI app + webhook (Phase 6+)
-  db/         async engine/session + job ingestion service (Phase 6+)
+  api/        HTTP surface — FastAPI app + webhook + findings (Phase 6+, 13)
+  db/         async engine/session + ingestion + discovery/bootstrap (Phase 6+, 13, 14)
+  discovery/  proactive bug-hunt: detectors, triage, promote (Phase 13)
   models/     SQLAlchemy 2.0 models (Phase 6+)
   agent/      tool-use loop + allowlist (Phase 3+)
   vcs/        GitHub App + draft PR — sole remote-write owner (Phase 5+)

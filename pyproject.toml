@@ -47,6 +47,8 @@ bugfix-api = "app.api.main:run"
 bugfix-pr = "app.vcs.cli:app"
 bugfix-worker = "app.workers.worker:main"
 bugfix-eval = "eval.cli:app"
+bugfix-scan = "app.discovery.cli:app"
+bugfix-bootstrap = "app.db.bootstrap:app"
 
 [dependency-groups]
 dev = [

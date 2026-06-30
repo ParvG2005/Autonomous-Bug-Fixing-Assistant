@@ -48,8 +48,15 @@ def test_empty_argv_rejected() -> None:
 
 def test_only_the_documented_commands_are_allowed() -> None:
     # Lock the surface: an accidental widening of the command set fails here.
+    # The set covers every language adapter's test/install toolchain (Phase 8 +
+    # extension). It deliberately excludes git/curl/ssh and the discovery
+    # scanners (detectors call the sandbox directly, never via the agent).
     assert Allowlist().commands == frozenset(
-        {"python", "pytest", "pip", "node", "npm", "npx", "go", "ls"}
+        {
+            "python", "pytest", "pip", "node", "npm", "npx", "go", "ls",
+            "cargo", "ruby", "bundle", "rspec", "rake",
+            "mvn", "gradle", "dotnet", "php", "phpunit", "composer", "mix",
+        }
     )
 
 

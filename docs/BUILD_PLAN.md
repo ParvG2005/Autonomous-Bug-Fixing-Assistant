@@ -116,7 +116,37 @@ Each phase lists: **Goal**, **Deliverables**, **Acceptance test** (automated), *
 - **Depends on:** 6, 7, 5. **Rel. size:** M. **Risk:** low-med. **Cut policy:** realtime UI is
   cut #1 (fall back to polling, then to API-only approval).
 
-## Phase 13 — Deploy + CI/CD
+## Phase 13 — Proactive bug discovery
+- **Goal:** Hunt a repo for latent bugs and feed credible candidates into the existing
+  reproduce → fix → verify → human-gated draft PR flow (a new job *source*, not a new fix path).
+- **Deliverables:** `app/discovery/` (Detector sources: existing-tests, static analysis, runtime
+  evidence, diff/hotspot, LLM review); `scan` + `finding` tables (dedup `fingerprint`); triage
+  (rank + budget cap + dedup) → `Finding` → synthetic `IssueTask` → job with `trigger="discovery"`;
+  `bugfix-scan` CLI (spend gate like eval); dashboard "Findings" tab. Reproduction is the
+  false-positive filter — a candidate that won't go red is dropped before any fix spend.
+- **Acceptance:** a scan of a repo with a known latent bug (no issue, no failing test) yields a
+  candidate that reproduces → fixes → verifies green → parks at `awaiting_approval`; a re-scan does
+  not refile the same finding (dedup). Full design: `PHASE13_BUG_DISCOVERY.md`.
+- **Depends on:** 4, 5, 7, 10, 12. **Rel. size:** L. **Risk:** med (noise/cost). **Cut policy:**
+  optional, most expendable — drop entirely and the system stays reactive (issue/label driven).
+
+## Phase 14 — One-command local dev (`npm run dev`)
+- **Goal:** A single `npm run dev` boots the whole stack and opens a freshly-populated dashboard.
+- **Deliverables:** `frontend/package.json` `dev` script orchestrating (via `concurrently` +
+  `wait-on`) `docker compose up -d postgres redis` → `alembic upgrade head` → a startup bootstrap
+  → API + worker + Vite together. New `bugfix-bootstrap` CLI (`app/db/bootstrap.py`): `--reset`
+  **wipes** job/run/artifact/fix/approval tables (guarded to `APP_ENV=local`), `--scrape` lists
+  **open GitHub issues** (reusing Phase 5 auth) and enqueues each through the existing
+  `ingest_labeled_issue` path (`trigger="scrape"`, capped by `SCRAPE_MAX_JOBS`). Wipe-then-scrape
+  = "scraps all the issue on startup". Full design: `PHASE14_DEV_ORCHESTRATION.md`.
+- **Acceptance:** `APP_ENV=local npm run dev` brings up compose + migrations + API + worker +
+  dashboard; the job tables are emptied then re-populated from scraped open issues, which the
+  dashboard shows progressing through the pipeline; re-running is idempotent.
+- **Depends on:** 5, 6, 7, 12. **Rel. size:** M. **Risk:** med (destructive wipe + token-spending
+  auto-enqueue — both gated; human gate unchanged). **Cut policy:** optional, dev-DX only — off the
+  critical path; if cut, use the manual multi-terminal startup in `SMOKE_TEST.md`.
+
+## Phase 15 — Deploy + CI/CD
 - **Goal:** Live URL with reachable webhook; pushing to main deploys cleanly.
 - **Deliverables:** dockerize all services; compose for local; Fly.io with managed Postgres +
   Redis + secrets manager; GitHub Actions test → build → push → deploy; migrations on deploy;
@@ -125,7 +155,7 @@ Each phase lists: **Goal**, **Deliverables**, **Acceptance test** (automated), *
 - **Depends on:** 6, 7, 9. **Rel. size:** L. **Risk:** med-high. **Cut policy:** managed cloud is
   cut #3 → fall back to a single VPS + docker-compose.
 
-## Phase 14 — Docs + demo
+## Phase 16 — Docs + demo
 - **Goal:** A new engineer runs the system locally from the README alone.
 - **Deliverables:** README; architecture diagram; how-it-works writeup; API docs; demo GIF + 90s
   recording of a real fix; final eval run for the headline number.
@@ -149,18 +179,28 @@ graph LR
     P10 --> P11
     P6 --> P12
     P7 --> P12
-    P9 --> P13
-    P13 --> P14
-    P11 --> P14
+    P12 --> P13
+    P10 --> P13
+    P12 --> P14
+    P9 --> P15
+    P15 --> P16
+    P11 --> P16
+    P13 --> P16
+    P14 --> P16
 ```
 
 ## Critical path
 
-`P0 → P1 → P2 → P3 → P4 → P5 → P9 → P13 → P14`. Phases 8, 10, 11, 12 hang off this spine and can
-be parallelized once their dependencies land.
+`P0 → P1 → P2 → P3 → P4 → P5 → P9 → P15 → P16`. Phases 8, 10, 11, 12, 13, 14 hang off this spine
+and can be parallelized once their dependencies land. Phases 13 (discovery) and 14 (one-command
+dev) are optional and not on the critical path to the Definition of Done.
 
 ## Cut-order (if a phase will overrun — never cut 4, 5, 9)
 
+0. **Proactive discovery (Phase 13)** → drop entirely; the system stays reactive (issue/label
+   driven). Most expendable: it's a net-new optional capability, off the critical path.
+0b. **One-command dev (Phase 14)** → drop; use the manual multi-terminal startup in
+   `SMOKE_TEST.md`. Dev-DX only, off the critical path.
 1. **Realtime UI** → polling instead of SSE; then API-only approval, no dashboard.
 2. **Extra languages** → Python only; defer JS/TS + Go (Phase 8).
 3. **Managed cloud** → single VPS + docker-compose instead of Fly + managed services.
@@ -171,8 +211,11 @@ be parallelized once their dependencies land.
 - First time enabling network egress for anything.
 - First real clone of an external repo (Phase 1 acceptance against a public repo).
 - First GitHub App installation + first real draft PR (Phase 5).
-- First cloud deploy + pointing a live webhook at a real repo (Phase 13).
+- First cloud deploy + pointing a live webhook at a real repo (Phase 15).
 - Running the eval harness at cost (Phase 11) — confirm spend ceiling first.
+- Running a proactive scan at cost (Phase 13) — confirm spend ceiling + max-jobs cap first.
+- First `npm run dev` scrape (Phase 14) — it wipes the dev DB and auto-enqueues token-spending
+  jobs; confirm `APP_ENV=local`, `SCRAPE_MAX_JOBS`, and that it points at a test repo.
 
 ## Definition of done (from spec)
 

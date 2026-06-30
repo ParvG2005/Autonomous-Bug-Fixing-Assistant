@@ -12,7 +12,16 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, Boolean, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Float,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import (
@@ -42,6 +51,40 @@ class JobTrigger(enum.StrEnum):
     WEBHOOK = "webhook"
     MANUAL = "manual"
     EVAL = "eval"
+    DISCOVERY = "discovery"  # Phase 13: promoted from a proactive-scan Finding
+    SCRAPE = "scrape"  # Phase 14: pulled from open GitHub issues on dev startup
+
+
+class ScanTrigger(enum.StrEnum):
+    SCHEDULED = "scheduled"
+    MANUAL = "manual"
+    PUSH = "push"
+
+
+class ScanState(enum.StrEnum):
+    """Scan lifecycle (Phase 13). Terminal: done, failed."""
+
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
+
+
+class FindingSource(enum.StrEnum):
+    TESTS = "tests"
+    STATIC = "static"
+    RUNTIME = "runtime"
+    DIFF = "diff"
+    REVIEW = "review"
+
+
+class FindingStatus(enum.StrEnum):
+    """A discovery candidate's lifecycle (Phase 13)."""
+
+    CANDIDATE = "candidate"
+    REPRODUCED = "reproduced"
+    PROMOTED = "promoted"
+    DISMISSED = "dismissed"
+    DUPLICATE = "duplicate"
 
 
 class RunPhase(enum.StrEnum):
@@ -106,6 +149,10 @@ class Job(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     repo_id: Mapped[uuid.UUID] = fk_uuid("repo.id")
     gh_issue_number: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Backref to the discovery Finding that spawned this job (Phase 13); null for
+    # webhook/scrape/eval/manual jobs. No FK constraint: a Finding is created in
+    # the same transaction and the job-side column is a soft provenance pointer.
+    finding_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
     trigger: Mapped[JobTrigger] = enum_column(JobTrigger, default=JobTrigger.WEBHOOK)
     issue_title: Mapped[str | None] = mapped_column(Text, nullable=True)
     issue_body_ref: Mapped[uuid.UUID | None] = mapped_column(nullable=True)  # ARTIFACT id
@@ -211,3 +258,53 @@ class CodeChunk(Base):
     end_line: Mapped[int] = mapped_column(Integer)
     symbol: Mapped[str | None] = mapped_column(String(255), nullable=True)
     indexed_at: Mapped[datetime] = created_at_column()
+
+
+class Scan(Base):
+    """One proactive bug-hunt over a repo (Phase 13). Yields :class:`Finding`s."""
+
+    __tablename__ = "scan"
+    __table_args__ = (Index("ix_scan_repo", "repo_id"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    repo_id: Mapped[uuid.UUID] = fk_uuid("repo.id")
+    trigger: Mapped[ScanTrigger] = enum_column(ScanTrigger, default=ScanTrigger.MANUAL)
+    state: Mapped[ScanState] = enum_column(ScanState, default=ScanState.RUNNING)
+    sources_run: Mapped[list[str]] = mapped_column(JSONType, default=list)
+    budget: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
+    created_at: Mapped[datetime] = created_at_column()
+
+    findings: Mapped[list[Finding]] = relationship(back_populates="scan")
+
+
+class Finding(Base):
+    """A discovery candidate. Reproduction (not the finder) is the precision gate.
+
+    ``fingerprint`` is unique per repo so a re-scan never refiles a known finding
+    (rule id + normalized location + symbol). Untrusted scanner/stacktrace output
+    lives in ``evidence`` as an artifact-like blob, never executed at rest.
+    """
+
+    __tablename__ = "finding"
+    __table_args__ = (
+        Index("ix_finding_scan", "scan_id"),
+        UniqueConstraint("repo_id", "fingerprint", name="uq_finding_repo_fingerprint"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    scan_id: Mapped[uuid.UUID] = fk_uuid("scan.id")
+    repo_id: Mapped[uuid.UUID] = fk_uuid("repo.id")
+    source: Mapped[FindingSource] = enum_column(FindingSource)
+    fingerprint: Mapped[str] = mapped_column(String(255))
+    summary: Mapped[str] = mapped_column(Text)
+    evidence: Mapped[str] = mapped_column(Text, default="")
+    frames: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    severity: Mapped[str] = mapped_column(String(32), default="medium")
+    status: Mapped[FindingStatus] = enum_column(
+        FindingStatus, default=FindingStatus.CANDIDATE
+    )
+    job_id: Mapped[uuid.UUID | None] = fk_uuid("job.id", nullable=True)
+    created_at: Mapped[datetime] = created_at_column()
+
+    scan: Mapped[Scan] = relationship(back_populates="findings")

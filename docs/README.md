@@ -2,7 +2,8 @@
 
 Design baseline for a system that takes a GitHub issue on a Python repo and autonomously
 reproduces, localizes, fixes, verifies, and explains the bug — then opens a **draft** PR gated on
-human approval. No code yet; these documents are the contract the build executes against.
+human approval. These documents are the contract the build executes against; Phases 0–14 are
+implemented (see `../handoff.md`), with Deploy (15) and Docs/demo (16) remaining.
 
 ## Read in this order
 
@@ -13,8 +14,14 @@ human approval. No code yet; these documents are the contract the build executes
 3. **[SEQUENCE_DIAGRAMS.md](./SEQUENCE_DIAGRAMS.md)** — the four key flows end to end.
 4. **[SECURITY.md](./SECURITY.md)** — threat model, the five non-negotiable constraints mapped
    to controls and tests, and the red-team plan.
-5. **[BUILD_PLAN.md](./BUILD_PLAN.md)** — phases 0–14 with acceptance tests, dependency graph,
+5. **[BUILD_PLAN.md](./BUILD_PLAN.md)** — phases 0–16 with acceptance tests, dependency graph,
    critical path, cut-order, and stop-and-ask gates.
+6. **[PHASE13_BUG_DISCOVERY.md](./PHASE13_BUG_DISCOVERY.md)** — the proactive bug-discovery stage
+   (Phase 13, **built**): hunt a repo for latent bugs and feed candidates into the existing
+   reproduce → fix → verify flow (`app/discovery/`, `scan`/`finding` tables, `bugfix-scan`).
+7. **[PHASE14_DEV_ORCHESTRATION.md](./PHASE14_DEV_ORCHESTRATION.md)** — one-command local dev
+   (Phase 14, **built**): `npm run dev` boots compose + API + worker + frontend and wipes-then-
+   scrapes open GitHub issues into the pipeline on startup (`bugfix-bootstrap`).
 
 Progress tracking lives in **[../handoff.md](../handoff.md)** (updated each session).
 

@@ -85,6 +85,31 @@ class GitHubClient:
         ref = self._request("GET", f"/git/ref/heads/{branch}")
         return str(ref["object"]["sha"])
 
+    def list_open_issues(
+        self, *, label: str | None = None, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        """List open issues (read-only; Phase 14 scrape).
+
+        Filters to ``label`` when given. GitHub's ``/issues`` endpoint also returns
+        pull requests — those carry a ``pull_request`` key and are excluded, so the
+        result is real issues only. Capped at ``limit`` (paginates up to 100/page).
+        """
+        out: list[dict[str, Any]] = []
+        page = 1
+        while len(out) < limit:
+            per_page = min(100, limit - len(out))
+            path = f"/issues?state=open&per_page={per_page}&page={page}"
+            if label:
+                path += f"&labels={label}"
+            batch = self._request("GET", path)
+            if not isinstance(batch, list) or not batch:
+                break
+            out.extend(i for i in batch if "pull_request" not in i)
+            if len(batch) < per_page:
+                break
+            page += 1
+        return out[:limit]
+
     # -- writes (the only mutating calls; all gated upstream) ------------
     def _create_blob(self, content: str) -> str:
         data = self._request(

@@ -11,14 +11,32 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.runner.adapters.base import LanguageAdapter
+from app.runner.adapters.dotnet import DotnetTestAdapter
+from app.runner.adapters.elixir import MixTestAdapter
 from app.runner.adapters.golang import GoTestAdapter
 from app.runner.adapters.javascript import NodeTestAdapter
+from app.runner.adapters.jvm import GradleAdapter, MavenAdapter
+from app.runner.adapters.php import PhpUnitAdapter
 from app.runner.adapters.python import PytestAdapter
+from app.runner.adapters.ruby import RSpecAdapter
+from app.runner.adapters.rust import CargoTestAdapter
 from app.runner.models import Framework, TraceFrame
 
 # Order matters: the first adapter whose ``detect`` is true wins. Python leads so
-# a Python repo never even scans for JS/Go test files.
-ADAPTERS: list[LanguageAdapter] = [PytestAdapter(), NodeTestAdapter(), GoTestAdapter()]
+# a Python repo never even scans for JS/Go test files; the rest key off distinct
+# manifest files (Cargo.toml, pom.xml, mix.exs, …) so detection never collides.
+ADAPTERS: list[LanguageAdapter] = [
+    PytestAdapter(),
+    NodeTestAdapter(),
+    GoTestAdapter(),
+    CargoTestAdapter(),
+    RSpecAdapter(),
+    MavenAdapter(),
+    GradleAdapter(),
+    DotnetTestAdapter(),
+    PhpUnitAdapter(),
+    MixTestAdapter(),
+]
 
 _BY_FRAMEWORK: dict[Framework, LanguageAdapter] = {a.framework: a for a in ADAPTERS}
 
@@ -55,10 +73,17 @@ def parse_any_frames(text: str, workspace: str | Path | None = None) -> list[Tra
 
 __all__ = [
     "ADAPTERS",
+    "CargoTestAdapter",
+    "DotnetTestAdapter",
     "GoTestAdapter",
+    "GradleAdapter",
     "LanguageAdapter",
+    "MavenAdapter",
+    "MixTestAdapter",
     "NodeTestAdapter",
+    "PhpUnitAdapter",
     "PytestAdapter",
+    "RSpecAdapter",
     "adapter_for",
     "detect_adapter",
     "parse_any_frames",
