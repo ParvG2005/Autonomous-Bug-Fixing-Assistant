@@ -30,8 +30,9 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db, get_session
+from app.api.deps import get_db, get_queue, get_session
 from app.db.approvals import record_decision
+from app.db.jobs import ingest_manual_issue
 from app.db.session import Database
 from app.models.entities import (
     ApprovalDecision,
@@ -43,6 +44,7 @@ from app.models.entities import (
     Run,
 )
 from app.workers.progress import read_logs
+from app.workers.queue import JobQueue
 from app.workers.state import TERMINAL_STATES, InvalidTransition, transition
 
 router = APIRouter(tags=["jobs"])
@@ -156,6 +158,42 @@ async def _load_job_view(session: AsyncSession, job_uuid: uuid.UUID) -> JobView:
             else None
         ),
     )
+
+
+class CreateJobBody(BaseModel):
+    repo_id: str
+    body: str
+    title: str | None = None
+
+
+@router.post("/jobs", response_model=JobView, status_code=status.HTTP_201_CREATED)
+async def create_job(
+    payload: CreateJobBody,
+    session: AsyncSession = Depends(get_session),
+    queue: object | None = Depends(get_queue),
+) -> JobView:
+    """Submit a fix job from the UI: ingest the issue text, then enqueue it.
+
+    The body is untrusted free text (a pasted traceback, etc.) — it flows
+    straight into :func:`ingest_manual_issue`, which stores it as an
+    ``ISSUE_BODY`` artifact rather than inlining it here.
+    """
+    if not payload.body.strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "issue body is empty")
+    try:
+        job = await ingest_manual_issue(
+            session,
+            repo_id=_parse_job_id(payload.repo_id),
+            body=payload.body,
+            title=payload.title,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    view = await _load_job_view(session, job.id)
+    await session.commit()
+    if isinstance(queue, JobQueue):
+        await queue.enqueue(job.id)
+    return view
 
 
 @router.get("/jobs/{job_id}", response_model=JobView)
