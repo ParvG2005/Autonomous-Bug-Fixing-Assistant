@@ -3,11 +3,18 @@ import { getJob, listJobs } from "./api";
 import { FindingsList } from "./components/FindingsList";
 import { JobDetail } from "./components/JobDetail";
 import { JobList } from "./components/JobList";
+import { RepoList } from "./components/RepoList";
 import type { Job } from "./types";
 
 const POLL_MS = 4000;
 
-type Tab = "jobs" | "findings";
+type Tab = "jobs" | "findings" | "repos";
+
+const TAB_LABELS: Record<Tab, string> = {
+  jobs: "Jobs",
+  findings: "Findings",
+  repos: "Repos",
+};
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("jobs");
@@ -61,7 +68,7 @@ export default function App() {
         <h1 className="text-xl font-bold">Bugfix Assistant</h1>
         <p className="text-xs text-slate-500">Watch a fix live and approve it.</p>
         <nav className="mt-3 flex gap-2" role="tablist">
-          {(["jobs", "findings"] as const).map((t) => (
+          {(["jobs", "findings", "repos"] as const).map((t) => (
             <button
               key={t}
               type="button"
@@ -72,13 +79,17 @@ export default function App() {
                 tab === t ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-600"
               }`}
             >
-              {t === "jobs" ? "Jobs" : "Findings"}
+              {TAB_LABELS[t]}
             </button>
           ))}
         </nav>
       </header>
       {error && <p className="bg-rose-50 px-6 py-2 text-sm text-rose-700">{error}</p>}
-      {tab === "findings" ? (
+      {tab === "repos" ? (
+        <main className="flex-1 bg-white">
+          <RepoList />
+        </main>
+      ) : tab === "findings" ? (
         <main className="flex-1 bg-white">
           <FindingsList />
         </main>
