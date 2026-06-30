@@ -89,6 +89,8 @@ class JobView(BaseModel):
     updated_at: datetime
     runs: list[RunView]
     fix: FixView | None
+    repo_full_name: str
+    publish_capable: bool
 
 
 class DecisionBody(BaseModel):
@@ -112,6 +114,8 @@ async def _load_job_view(session: AsyncSession, job_uuid: uuid.UUID) -> JobView:
     job = (await session.execute(select(Job).where(Job.id == job_uuid))).scalar_one_or_none()
     if job is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "job not found")
+
+    repo = (await session.execute(select(Repo).where(Repo.id == job.repo_id))).scalar_one()
 
     runs = (
         (
@@ -158,6 +162,8 @@ async def _load_job_view(session: AsyncSession, job_uuid: uuid.UUID) -> JobView:
             if fix is not None
             else None
         ),
+        repo_full_name=repo.full_name,
+        publish_capable=repo.installation_id is not None,
     )
 
 

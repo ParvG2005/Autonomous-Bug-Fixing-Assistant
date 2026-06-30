@@ -127,3 +127,14 @@ async def test_publish_enqueues_when_approved_and_connected(
     assert r.status_code == 202
 
     assert ("publish_pr", (jid,), f"publish:{jid}") in fake_pool.calls
+
+
+async def test_job_view_has_capability(
+    db_and_client: tuple[httpx.AsyncClient, Database],
+) -> None:
+    client, _db = db_and_client
+    _rid, jid = await _make_job(client)
+    r = await client.get(f"/jobs/{jid}")
+    j = r.json()
+    assert j["repo_full_name"] == "octo/demo"
+    assert j["publish_capable"] is False

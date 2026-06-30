@@ -37,6 +37,8 @@ export interface Job {
   updated_at: string;
   runs: RunView[];
   fix: FixView | null;
+  repo_full_name: string;
+  publish_capable: boolean;
 }
 
 export type ArtifactKind = "diff" | "reasoning" | "trace";
