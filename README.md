@@ -56,7 +56,16 @@ Design docs live in [`docs/`](docs/README.md). Build order is in
   **crash recovery** (`app.workers.recovery`) sweeps `running` jobs back to `queued` on worker
   startup; and read-only status/SSE-log endpoints (`GET /jobs`, `/jobs/{id}`, `/jobs/{id}/logs`).
   `bugfix-worker` CLI (also `arq app.workers.worker.WorkerSettings`).
-- ⬜ Phases 8–14: see the build plan.
+- ✅ **Phase 8 — Multi-language adapters**: a **language-adapter plugin layer** (`app.runner.adapters`)
+  factors out everything framework-specific behind one `LanguageAdapter` contract — `detect`,
+  `install_command`, `build_command`, `parse_frames`, `parse_result`. Three adapters ship: **Python**
+  (pytest, wraps the original runner), **JS/TS** (`node --test`, zero-dependency TAP), and **Go**
+  (`go test`). A generic `run_tests` (`app.runner.run`) detects the language and dispatches, so the
+  agent loop and worker pipeline never name a language. Per-language sandbox base images
+  (`docker/sandbox.{python,node,go}.Dockerfile`) carry each toolchain, selected by detected language.
+  Acceptance: a verified red→fix→green run in each of Python, JS/TS, Go
+  (`tests/integration/test_multilang_acceptance.py`).
+- ⬜ Phases 9–14: see the build plan.
 
 ## Quickstart
 
@@ -175,7 +184,7 @@ app/
   vcs/        GitHub App + draft PR — sole remote-write owner (Phase 5+)
   sandbox/    ephemeral container isolation (Phase 2+)
   index/      repo brain: clone, symbols, search, retrieval  ← Phase 1
-  runner/     test detection + stack-trace parsing (Phase 2+)
+  runner/     multi-language test detection + run + parse; adapters/ (Phase 2, 8+)
   workers/    arq tasks + job state machine (Phase 7+)
   models/     SQLAlchemy + Alembic (Phase 6+)
   core/       settings, secrets, tool allowlist

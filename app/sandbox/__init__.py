@@ -33,25 +33,35 @@ class SandboxUnavailable(RuntimeError):
     """Raised when no acceptable sandbox is available for the environment."""
 
 
-def get_sandbox(settings: Settings | None = None, *, prefer_local: bool = False) -> Sandbox:
+def get_sandbox(
+    settings: Settings | None = None,
+    *,
+    prefer_local: bool = False,
+    image: str | None = None,
+) -> Sandbox:
     """Return the appropriate sandbox for the current environment.
 
     Deployed environments (``ci``/``prod``) require Docker — the local fallback
     is never returned there. Locally, Docker is used when present, otherwise the
     subprocess fallback. ``prefer_local`` forces the fallback in local dev (useful
-    for fast offline tests).
+    for fast offline tests). ``image`` selects the per-language Docker base image
+    (Phase 8); it is ignored by the local fallback, which runs against the host
+    toolchain in-place.
     """
     settings = settings or get_settings()
+
+    def _docker() -> Sandbox:
+        return DockerSandbox(image) if image else DockerSandbox()
 
     if settings.is_deployed:
         if not docker_available():
             raise SandboxUnavailable(
                 "a deployed environment requires Docker, but the docker CLI was not found"
             )
-        return DockerSandbox()
+        return _docker()
 
     if prefer_local:
         return LocalSandbox()
     if docker_available():
-        return DockerSandbox()
+        return _docker()
     return LocalSandbox()

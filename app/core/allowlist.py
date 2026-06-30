@@ -23,8 +23,14 @@ class Allowlist:
             {"read_file", "search", "find_symbol", "edit_file", "run_tests", "run_command"}
         )
     )
-    # Commands permitted via ``run_command`` (exact argv[0] match).
-    commands: frozenset[str] = field(default_factory=lambda: frozenset({"python", "pytest", "ls"}))
+    # Commands permitted via ``run_command`` (exact argv[0] match). Covers every
+    # language adapter's test/install toolchain (Phase 8): pytest/pip (Python),
+    # node/npm/npx (JS/TS), go (Go), plus the read-only `ls`.
+    commands: frozenset[str] = field(
+        default_factory=lambda: frozenset(
+            {"python", "pytest", "pip", "node", "npm", "npx", "go", "ls"}
+        )
+    )
 
     def check_tool(self, name: str) -> None:
         """Raise :class:`ToolNotAllowed` if ``name`` is not an allowed tool."""

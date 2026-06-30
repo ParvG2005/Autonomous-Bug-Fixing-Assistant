@@ -53,10 +53,12 @@ def _has_test_files(workspace: Path) -> bool:
 
 
 def detect_framework(workspace: Path) -> Framework | None:
-    """Return the test framework in ``workspace``, or ``None`` if none is found."""
-    workspace = workspace.resolve()
-    if not workspace.is_dir():
-        return None
-    if _has_pytest_config(workspace) or _has_test_files(workspace):
-        return Framework.PYTEST
-    return None
+    """Return the test framework in ``workspace``, or ``None`` if none is found.
+
+    Delegates to the multi-language adapter registry (Phase 8); the Python
+    helpers above remain the pytest adapter's detection implementation.
+    """
+    from app.runner.adapters import detect_adapter
+
+    adapter = detect_adapter(workspace)
+    return adapter.framework if adapter is not None else None

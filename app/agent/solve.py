@@ -75,9 +75,14 @@ def solve_issue(
 
     if sandbox is None:
         from app.core.settings import get_settings
+        from app.runner.adapters import detect_adapter
         from app.sandbox import get_sandbox
 
-        sandbox = get_sandbox(get_settings())
+        # Select the sandbox image carrying the detected language's toolchain
+        # (Phase 8). The local fallback ignores the image and runs in-place.
+        adapter = detect_adapter(workspace)
+        image = adapter.image if adapter is not None else None
+        sandbox = get_sandbox(get_settings(), image=image)
 
     executor = ToolExecutor(
         workspace,

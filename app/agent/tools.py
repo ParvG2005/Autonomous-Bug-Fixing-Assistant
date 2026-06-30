@@ -28,7 +28,7 @@ from app.core.allowlist import Allowlist, ToolNotAllowed
 from app.index.read import PathOutsideWorkspace, resolve_in_workspace
 from app.index.repo_brain import RepoBrain
 from app.runner.models import TestRunResult
-from app.runner.pytest_runner import NoTestFramework, run_pytest
+from app.runner.run import NoTestFramework, run_tests
 from app.sandbox.base import Sandbox
 from app.sandbox.models import ResourceLimits
 
@@ -121,7 +121,10 @@ def tool_schemas() -> list[dict[str, Any]]:
                     "targets": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Optional pytest targets (e.g. 'test_calc.py::test_add').",
+                        "description": (
+                            "Optional test targets in the project's native form "
+                            "(pytest node id, test file path, or `-run TestName`)."
+                        ),
                     },
                 },
             },
@@ -129,7 +132,8 @@ def tool_schemas() -> list[dict[str, Any]]:
         {
             "name": "run_command",
             "description": (
-                "Run an allowlisted command in the sandbox (e.g. python, pytest, ls). "
+                "Run an allowlisted command in the sandbox (e.g. python, pytest, "
+                "node, npm, go, ls). "
                 "Pass argv as a list. Network is off; output is captured."
             ),
             "input_schema": {
@@ -311,7 +315,7 @@ class ToolExecutor:
     def _run_tests(self, args: dict[str, Any]) -> str:
         targets = args.get("targets")
         target_list = [str(t) for t in targets] if targets else None
-        result = run_pytest(self.root, self.sandbox, targets=target_list, limits=self.limits)
+        result = run_tests(self.root, self.sandbox, targets=target_list, limits=self.limits)
         self.last_test_result = result
         return format_test_result(result)
 

@@ -13,9 +13,15 @@ from enum import StrEnum
 
 
 class Framework(StrEnum):
-    """Test frameworks the runner can detect and drive (pytest first)."""
+    """Test frameworks the runner can detect and drive (one per language adapter).
 
-    PYTEST = "pytest"
+    Phase 8 generalizes the runner beyond pytest: each member maps to a
+    :class:`~app.runner.adapters.base.LanguageAdapter` in the registry.
+    """
+
+    PYTEST = "pytest"  # Python
+    NODE_TEST = "node-test"  # JS/TS — node's built-in test runner
+    GO_TEST = "go-test"  # Go — `go test`
 
 
 class Outcome(StrEnum):

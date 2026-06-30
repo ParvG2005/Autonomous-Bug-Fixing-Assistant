@@ -17,8 +17,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from app.runner.adapters import parse_any_frames
 from app.runner.models import TraceFrame
-from app.runner.trace import parse_frames
 
 # `ExceptionType: message` — an exception class (ends in Error/Exception/Warning)
 # flush against a message. The type may be dotted (``socket.timeout`` style names
@@ -124,7 +124,7 @@ def parse_issue(text: str, *, title: str | None = None) -> IssueTask:
         body = text
 
     error_type, error_message = _extract_exception(text)
-    frames = parse_frames(text)
+    frames = parse_any_frames(text)
 
     nodeids = _dedupe(_NODEID_RE.findall(text))
     # Paths that are part of a node id should not also count as bare paths.

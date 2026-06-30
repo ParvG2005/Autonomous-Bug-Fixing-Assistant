@@ -3,7 +3,48 @@
 > Running progress log. Update this at the end of every working session: what got done, what's
 > left, and anything the next session needs to know. Most recent entry on top.
 
-## Current status: PHASES 0–7 COMPLETE — fire-and-forget workers, pollable, crash-recoverable
+## Current status: PHASES 0–8 COMPLETE — multi-language (Python, JS/TS, Go)
+
+Phase 8 (Multi-language adapters) generalizes the runner beyond pytest behind a plugin layer:
+
+- `app/runner/adapters/base.py` — the **`LanguageAdapter`** contract: `detect`, `install_command`,
+  `build_command`, `parse_frames`, `parse_result`, plus `framework` / `image` / `commands`. Each
+  adapter decides *what* to run and *how* to read output; execution stays the sandbox's job.
+- `app/runner/adapters/{python,javascript,golang}.py` — three adapters. **PytestAdapter** is a thin
+  facade over the original Phase 2 modules (no logic duplicated). **NodeTestAdapter** drives
+  `node --test --test-reporter=tap` (zero-dep; TAP forced so parsing is deterministic off-TTY) and
+  parses the `# pass/fail` footer + `not ok` YAML blocks (inline *and* block-scalar `error:`),
+  ignoring `node:internal/*` frames. **GoTestAdapter** drives `go test ./... -v`, counts
+  `--- PASS/FAIL`, reads `file.go:line: msg` logs + panic stacks, and maps a non-zero exit with no
+  failures to a compile ERROR.
+- `app/runner/adapters/__init__.py` — ordered **registry** (Python first → existing behavior
+  unchanged); `detect_adapter`, `adapter_for`, `parse_any_frames` (used by issue parsing, which sees
+  text before any workspace).
+- `app/runner/run.py` — generic **`run_tests`**: detect adapter → (optional `install`) → build → run
+  in sandbox → `parse_result`. Shares the single `NoTestFramework`. `detect.py`'s `detect_framework`
+  now delegates to the registry; `run_pytest`/`parse_result` kept for back-compat.
+- **Seams wired**: `ToolExecutor._run_tests` → `run_tests`; allowlist `commands` +=
+  `node/npm/npx/go/pip`; `solve_issue` selects the per-language sandbox image via `detect_adapter` +
+  `get_sandbox(image=…)` (local fallback ignores it). `docker/sandbox.{python,node,go}.Dockerfile`
+  carry each toolchain.
+
+Acceptance (Phase 8): a **verified red→fix→green** run in each of Python, JS/TS, Go via the real
+runner + LocalSandbox (`tests/integration/test_multilang_acceptance.py`; JS/Go skip when the host
+toolchain is absent, like the PR acceptance skips without creds). Adapters are unit-covered offline
+against captured `node --test` TAP + `go test -v` output (`test_adapter_node.py`,
+`test_adapter_go.py`, `test_adapters.py`). Whole suite: **192 passed, 4 skipped** offline; ruff +
+format + mypy clean; `alembic check` drift-free (Phase 8 added no schema). New runtime deps: none
+(Node/Go toolchains live in the sandbox images, not the Python project).
+
+**Next session:** Phase 9 (Security hardening ⭐ never cut) — see the build plan. Still open from
+Phase 7: migrate the APPROVAL store off the JSON file onto the `approval` table behind the same
+`ApprovalStore` protocol, and wire approve/reject endpoints + the Phase 5 publish path at the
+`awaiting_approval` gate. For the *real* multi-language acceptance, build the node/go sandbox images
+(and optionally install go locally to un-skip `test_go_verified_fix`).
+
+---
+
+## Earlier: PHASES 0–7 COMPLETE — fire-and-forget workers, pollable, crash-recoverable
 
 Phase 7 (Async workers) drains the queue and drives the lifecycle:
 

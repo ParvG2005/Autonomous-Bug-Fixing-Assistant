@@ -10,6 +10,7 @@ and the result value types.
 
 from __future__ import annotations
 
+from app.runner.adapters import LanguageAdapter, adapter_for, detect_adapter
 from app.runner.detect import detect_framework
 from app.runner.models import (
     Framework,
@@ -19,17 +20,22 @@ from app.runner.models import (
     TraceFrame,
 )
 from app.runner.pytest_runner import NoTestFramework, parse_result, run_pytest
+from app.runner.run import run_tests
 from app.runner.trace import parse_frames
 
 __all__ = [
     "Framework",
+    "LanguageAdapter",
     "NoTestFramework",
     "Outcome",
     "TestFailure",
     "TestRunResult",
     "TraceFrame",
+    "adapter_for",
+    "detect_adapter",
     "detect_framework",
     "parse_frames",
     "parse_result",
     "run_pytest",
+    "run_tests",
 ]
