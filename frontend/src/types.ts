@@ -67,6 +67,14 @@ export interface Finding {
   created_at: string;
 }
 
+/** Mirrors RepoView in app/api/repos.py. */
+export interface Repo {
+  id: string;
+  full_name: string;
+  publish_capable: boolean;
+  created_at: string;
+}
+
 /** A job state is terminal (or awaiting a decision) when no log stream remains open. */
 export const STREAM_CLOSED_STATES: ReadonlySet<JobState> = new Set<JobState>([
   "awaiting_approval",

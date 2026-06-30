@@ -1,7 +1,7 @@
 // Thin typed client over the control-plane API. Relative URLs so the same build
 // works behind the Vite dev proxy and same-origin in production.
 
-import type { ArtifactKind, ArtifactView, Finding, Job } from "./types";
+import type { ArtifactKind, ArtifactView, Finding, Job, Repo } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -28,6 +28,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new ApiError(resp.status, detail);
   }
+  if (resp.status === 204) return undefined as T;
   return (await resp.json()) as T;
 }
 
@@ -70,4 +71,28 @@ export function listFindings(limit = 100): Promise<Finding[]> {
 /** Promote a finding to a queued discovery job (human gate at discovery). */
 export function promoteFinding(id: string): Promise<Finding> {
   return request<Finding>(`/findings/${id}/promote`, { method: "POST" });
+}
+
+// --- Repos, manual jobs, publish (UI control plane) ---
+
+export function listRepos(): Promise<Repo[]> {
+  return request<Repo[]>("/repos");
+}
+export function addRepo(cloneUrl: string): Promise<Repo> {
+  return request<Repo>("/repos", { method: "POST", body: JSON.stringify({ clone_url: cloneUrl }) });
+}
+export function deleteRepo(id: string): Promise<void> {
+  return request<void>(`/repos/${id}`, { method: "DELETE" });
+}
+export function connectRepo(id: string): Promise<{ status: string }> {
+  return request(`/repos/${id}/connect`, { method: "POST" });
+}
+export function scanRepo(id: string): Promise<{ status: string }> {
+  return request(`/repos/${id}/scan`, { method: "POST" });
+}
+export function createJob(repoId: string, body: string, title?: string): Promise<Job> {
+  return request<Job>("/jobs", { method: "POST", body: JSON.stringify({ repo_id: repoId, body, title }) });
+}
+export function publishJob(id: string): Promise<{ status: string }> {
+  return request(`/jobs/${id}/publish`, { method: "POST" });
 }

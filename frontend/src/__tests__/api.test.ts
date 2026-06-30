@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { approveJob, getArtifact, getJob, listJobs, rejectJob } from "../api";
+import { addRepo, createJob, deleteRepo } from "../api";
 
 function mockFetch(body: unknown, ok = true, status = 200) {
   const fn = vi.fn().mockResolvedValue({
@@ -58,5 +59,32 @@ describe("api client", () => {
       name: "ApiError",
       status: 409,
     });
+  });
+
+  it("addRepo posts clone_url", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: "r1", full_name: "octo/demo", publish_capable: false, created_at: "" }),
+        { status: 201, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const repo = await addRepo("octo/demo");
+    expect(repo.full_name).toBe("octo/demo");
+    expect(fetchMock).toHaveBeenCalledWith("/repos", expect.objectContaining({ method: "POST" }));
+  });
+
+  it("deleteRepo handles a 204 response without throwing", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(deleteRepo("r1")).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith("/repos/r1", expect.objectContaining({ method: "DELETE" }));
+  });
+
+  it("createJob posts repo_id, body, and title", async () => {
+    const fetchMock = mockFetch({ id: "j1", state: "queued" });
+    await createJob("repo1", "steps to repro", "Bug title");
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("/jobs");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({ repo_id: "repo1", body: "steps to repro", title: "Bug title" });
   });
 });
