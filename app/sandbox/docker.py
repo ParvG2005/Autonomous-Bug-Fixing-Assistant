@@ -36,6 +36,28 @@ def docker_available() -> bool:
     return shutil.which("docker") is not None
 
 
+def image_available(image: str = DEFAULT_IMAGE) -> bool:
+    """True when ``image`` is present locally (daemon up *and* image built).
+
+    ``docker_available`` only checks the CLI is on PATH; a live container still
+    fails with exit 125 if the daemon is down or the image was never built (as in
+    CI). ``docker image inspect`` returns non-zero in either case, so this is the
+    correct guard for docker-marked tests that actually run a container.
+    """
+    docker = shutil.which("docker")
+    if docker is None:
+        return False
+    try:
+        result = subprocess.run(
+            [docker, "image", "inspect", image],
+            capture_output=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0
+
+
 class DockerSandbox:
     """Runs each command in a throwaway, locked-down container."""
 

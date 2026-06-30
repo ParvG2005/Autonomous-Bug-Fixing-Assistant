@@ -17,8 +17,8 @@ from app.sandbox import (
     LocalSandbox,
     ResourceLimits,
     SandboxUnavailable,
-    docker_available,
     get_sandbox,
+    image_available,
 )
 
 pytestmark = pytest.mark.redteam
@@ -81,7 +81,11 @@ def test_local_dev_falls_back_only_off_deploy(monkeypatch: pytest.MonkeyPatch) -
 
 # --- live container behaviour (requires Docker) -------------------------------
 
-_needs_docker = pytest.mark.skipif(not docker_available(), reason="requires Docker daemon")
+# Gate on the image, not just the CLI: CI has the docker binary but no built
+# image, so a bare daemon check let these run and fail with exit 125.
+_needs_docker = pytest.mark.skipif(
+    not image_available(), reason="requires Docker daemon + bugfix-sandbox image"
+)
 
 
 @pytest.mark.docker

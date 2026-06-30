@@ -13,7 +13,12 @@ from __future__ import annotations
 
 from app.core.settings import Settings, get_settings
 from app.sandbox.base import Sandbox
-from app.sandbox.docker import DockerNotFound, DockerSandbox, docker_available
+from app.sandbox.docker import (
+    DockerNotFound,
+    DockerSandbox,
+    docker_available,
+    image_available,
+)
 from app.sandbox.local import LocalSandbox
 from app.sandbox.models import ExecResult, ResourceLimits
 
@@ -26,6 +31,7 @@ __all__ = [
     "Sandbox",
     "docker_available",
     "get_sandbox",
+    "image_available",
 ]
 
 
