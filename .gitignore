@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Workspaces (cloned repos live here; never commit them)
+workspaces/
+/tmp-workspaces/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+
+# OS
+.DS_Store
