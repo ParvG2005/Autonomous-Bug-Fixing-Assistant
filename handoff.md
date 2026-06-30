@@ -36,6 +36,13 @@ against captured `node --test` TAP + `go test -v` output (`test_adapter_node.py`
 format + mypy clean; `alembic check` drift-free (Phase 8 added no schema). New runtime deps: none
 (Node/Go toolchains live in the sandbox images, not the Python project).
 
+**Toolchain follow-up (this session):** Node (v26.3.1) and Go (1.26.4) are now installed on the dev
+host, so the two `@skipif(which(...) is None)` JS/Go acceptance cases in
+`test_multilang_acceptance.py` no longer skip — all three languages run red→fix→green via the real
+runner + LocalSandbox. Full suite now **193 passed, 3 skipped** (the remaining 3 are the
+GitHub-credential-gated real-PR acceptance and the intentional docker-present `test_sandbox_local`
+skip — none are language adapters).
+
 **Next session:** Phase 9 (Security hardening ⭐ never cut) — see the build plan. Still open from
 Phase 7: migrate the APPROVAL store off the JSON file onto the `approval` table behind the same
 `ApprovalStore` protocol, and wire approve/reject endpoints + the Phase 5 publish path at the
@@ -332,7 +339,9 @@ acceptance tests are in `docs/BUILD_PLAN.md`. Phases not started:
 - [x] Phase 6 — FastAPI + Postgres/Alembic + webhook
 - [x] Phase 7 — arq workers + state machine (queue dedup, pipeline → human gate, crash recovery,
       `/jobs` status + SSE logs; `bugfix-worker`; 160 passed offline)
-- [ ] Phase 8 — JS/TS + Go adapters
+- [x] Phase 8 — JS/TS + Go adapters (`LanguageAdapter` plugin layer + ordered registry; Pytest/Node/
+      Go adapters; generic `run_tests`; allowlist += node/npm/npx/go/pip; per-language sandbox images;
+      red→fix→green verified in all three languages)
 - [ ] Phase 9 — security hardening + red-team suite ⭐
 - [ ] Phase 10 — observability + cost (structlog, Langfuse, metrics)
 - [ ] Phase 11 — eval harness (SWE-bench-lite + custom set)
@@ -362,5 +371,6 @@ Start Phase 0 scaffold (no external access needed) so Phase 1 can begin the mome
 land. Phase 1's repo-brain CLI is also buildable + testable without Docker or an API key.
 
 ---
-_Last updated: 2026-06-30 — Phase 7 complete (async workers: queue, state machine, pipeline → human
-gate, crash recovery, /jobs status + SSE logs)._
+_Last updated: 2026-06-30 — Phase 8 complete (multi-language adapters: Python/JS-TS/Go behind a
+`LanguageAdapter` plugin layer + generic `run_tests`). Node + Go installed on the dev host, so the
+JS/Go acceptance cases now run: **193 passed, 3 skipped**._
