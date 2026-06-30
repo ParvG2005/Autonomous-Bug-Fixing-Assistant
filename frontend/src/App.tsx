@@ -3,11 +3,19 @@ import { getJob, listJobs } from "./api";
 import { FindingsList } from "./components/FindingsList";
 import { JobDetail } from "./components/JobDetail";
 import { JobList } from "./components/JobList";
+import { NewFixModal } from "./components/NewFixModal";
+import { RepoList } from "./components/RepoList";
 import type { Job } from "./types";
 
 const POLL_MS = 4000;
 
-type Tab = "jobs" | "findings";
+type Tab = "jobs" | "findings" | "repos";
+
+const TAB_LABELS: Record<Tab, string> = {
+  jobs: "Jobs",
+  findings: "Findings",
+  repos: "Repos",
+};
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("jobs");
@@ -15,6 +23,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Job | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showNew, setShowNew] = useState(false);
 
   const refreshJobs = useCallback(async () => {
     try {
@@ -61,7 +70,7 @@ export default function App() {
         <h1 className="text-xl font-bold">Bugfix Assistant</h1>
         <p className="text-xs text-slate-500">Watch a fix live and approve it.</p>
         <nav className="mt-3 flex gap-2" role="tablist">
-          {(["jobs", "findings"] as const).map((t) => (
+          {(["jobs", "findings", "repos"] as const).map((t) => (
             <button
               key={t}
               type="button"
@@ -72,19 +81,32 @@ export default function App() {
                 tab === t ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-600"
               }`}
             >
-              {t === "jobs" ? "Jobs" : "Findings"}
+              {TAB_LABELS[t]}
             </button>
           ))}
         </nav>
       </header>
       {error && <p className="bg-rose-50 px-6 py-2 text-sm text-rose-700">{error}</p>}
-      {tab === "findings" ? (
+      {tab === "repos" ? (
+        <main className="flex-1 bg-white">
+          <RepoList />
+        </main>
+      ) : tab === "findings" ? (
         <main className="flex-1 bg-white">
           <FindingsList />
         </main>
       ) : (
         <div className="grid flex-1 grid-cols-1 md:grid-cols-[20rem_1fr]">
           <aside className="border-r border-slate-200 bg-white">
+            <div className="flex justify-end border-b border-slate-200 px-3 py-2">
+              <button
+                type="button"
+                onClick={() => setShowNew(true)}
+                className="rounded bg-slate-800 px-3 py-1 text-sm font-medium text-white"
+              >
+                + New Fix
+              </button>
+            </div>
             <JobList jobs={jobs} selectedId={selectedId} onSelect={setSelectedId} />
           </aside>
           <main>
@@ -95,6 +117,16 @@ export default function App() {
             )}
           </main>
         </div>
+      )}
+      {showNew && (
+        <NewFixModal
+          onClose={() => setShowNew(false)}
+          onCreated={(job) => {
+            setShowNew(false);
+            void refreshJobs();
+            setSelectedId(job.id);
+          }}
+        />
       )}
     </div>
   );

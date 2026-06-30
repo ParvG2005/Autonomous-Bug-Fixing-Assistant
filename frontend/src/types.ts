@@ -37,6 +37,8 @@ export interface Job {
   updated_at: string;
   runs: RunView[];
   fix: FixView | null;
+  repo_full_name: string;
+  publish_capable: boolean;
 }
 
 export type ArtifactKind = "diff" | "reasoning" | "trace";
@@ -64,6 +66,14 @@ export interface Finding {
   confidence: number;
   status: FindingStatus;
   job_id: string | null;
+  created_at: string;
+}
+
+/** Mirrors RepoView in app/api/repos.py. */
+export interface Repo {
+  id: string;
+  full_name: string;
+  publish_capable: boolean;
   created_at: string;
 }
 

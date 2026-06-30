@@ -102,6 +102,56 @@ def mint_installation_token(
     return InstallationToken(value=data["token"], expires_at=data.get("expires_at", ""))
 
 
+def resolve_repo_installation(
+    settings: Settings,
+    full_name: str,
+    *,
+    now: int,
+    http: httpx.Client | None = None,
+) -> tuple[int, int]:
+    """Resolve ``(gh_repo_id, installation_id)`` for ``full_name`` via the GitHub App.
+
+    Mints an App JWT and calls ``GET /repos/{full_name}`` for the repo id, then
+    ``GET /repos/{full_name}/installation`` for the installation id. Raises
+    :class:`GitHubAuthError` if credentials are unconfigured or either call does
+    not return 200; response bodies are never echoed (they may contain the JWT).
+    """
+    if settings.github_app_id is None or settings.github_app_private_key is None:
+        raise GitHubAuthError("GitHub App credentials are not configured")
+
+    app_jwt = build_app_jwt(
+        settings.github_app_id,
+        settings.github_app_private_key.get_secret_value(),
+        now=now,
+    )
+    headers = {
+        "Authorization": f"Bearer {app_jwt}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+    client = http or httpx.Client(timeout=30.0)
+    try:
+        repo_resp = client.get(f"{GITHUB_API}/repos/{full_name}", headers=headers)
+        if repo_resp.status_code != 200:
+            raise GitHubAuthError(
+                f"repo lookup failed for {full_name}: HTTP {repo_resp.status_code}"
+            )
+        gh_repo_id = repo_resp.json()["id"]
+
+        install_resp = client.get(f"{GITHUB_API}/repos/{full_name}/installation", headers=headers)
+        if install_resp.status_code != 200:
+            raise GitHubAuthError(
+                f"installation lookup failed for {full_name}: HTTP {install_resp.status_code}"
+            )
+        installation_id = install_resp.json()["id"]
+    finally:
+        if http is None:
+            client.close()
+
+    return (gh_repo_id, installation_id)
+
+
 # A minter is injectable so the publish path can be driven offline in tests.
 TokenMinter = Callable[[int], InstallationToken]
 

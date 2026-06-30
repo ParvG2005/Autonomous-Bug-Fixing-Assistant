@@ -15,6 +15,7 @@ from app.vcs.auth import (
     InstallationToken,
     build_app_jwt,
     mint_installation_token,
+    resolve_repo_installation,
 )
 
 _NOW = 1_750_000_000
@@ -87,3 +88,44 @@ def test_mint_raises_on_non_201_without_leaking_body() -> None:
         mint_installation_token(settings, 7, now=_NOW, http=client)
     assert "leak" not in str(exc.value)
     assert "403" in str(exc.value)
+
+
+def test_resolve_repo_installation_returns_ids() -> None:
+    private_pem, _ = _rsa_pem()
+    settings = Settings(github_app_id="42", github_app_private_key=SecretStr(private_pem))
+    captured: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        captured.append(url)
+        if url.endswith("/installation"):
+            return httpx.Response(200, json={"id": 67890})
+        return httpx.Response(200, json={"id": 12345})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    gh_repo_id, installation_id = resolve_repo_installation(
+        settings, "octo/demo", now=_NOW, http=client
+    )
+
+    assert gh_repo_id == 12345
+    assert installation_id == 67890
+    assert any(u.endswith("/repos/octo/demo") for u in captured)
+    assert any(u.endswith("/repos/octo/demo/installation") for u in captured)
+
+
+def test_resolve_repo_installation_raises_on_non_200_without_leaking_body() -> None:
+    private_pem, _ = _rsa_pem()
+    settings = Settings(github_app_id="42", github_app_private_key=SecretStr(private_pem))
+    client = httpx.Client(
+        transport=httpx.MockTransport(lambda r: httpx.Response(404, json={"jwt": "leak"}))
+    )
+    with pytest.raises(GitHubAuthError) as exc:
+        resolve_repo_installation(settings, "octo/missing", now=_NOW, http=client)
+    assert "leak" not in str(exc.value)
+    assert "404" in str(exc.value)
+
+
+def test_resolve_repo_installation_requires_configured_credentials() -> None:
+    settings = Settings(github_app_id=None, github_app_private_key=None)
+    with pytest.raises(GitHubAuthError, match="not configured"):
+        resolve_repo_installation(settings, "octo/demo", now=_NOW)

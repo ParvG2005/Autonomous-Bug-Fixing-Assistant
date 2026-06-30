@@ -173,7 +173,7 @@ def _github_issue_source(db: Database, settings: Settings, *, label: str | None)
                 repo = (
                     await session.execute(select(Repo).where(Repo.full_name == full_name))
                 ).scalar_one_or_none()
-            if repo is None:
+            if repo is None or repo.gh_repo_id is None or repo.installation_id is None:
                 raise RuntimeError(
                     f"repo {full_name!r} is not installed — install the GitHub App first"
                 )

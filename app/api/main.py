@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.findings import router as findings_router
 from app.api.jobs import router as jobs_router
 from app.api.metrics import router as metrics_router
+from app.api.repos import router as repos_router
 from app.api.webhooks import router as webhooks_router
 from app.core.settings import Settings, get_settings
 from app.db.session import Database
@@ -49,7 +50,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.add_middleware(
             CORSMiddleware,
             allow_origins=settings.cors_origins,
-            allow_methods=["GET", "POST"],
+            allow_methods=["GET", "POST", "DELETE"],
             allow_headers=["*"],
         )
 
@@ -61,6 +62,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(jobs_router)
     app.include_router(metrics_router)
     app.include_router(findings_router)
+    app.include_router(repos_router)
     return app
 
 

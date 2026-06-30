@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { approveJob, getArtifact, rejectJob } from "../api";
+import { approveJob, getArtifact, publishJob, rejectJob } from "../api";
 import { useJobStream } from "../hooks/useJobStream";
 import type { Job } from "../types";
 import { DiffView } from "./DiffView";
@@ -18,6 +18,7 @@ export function JobDetail({ job, onDecision }: Props) {
   const [actor, setActor] = useState("dashboard");
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [publishing, setPublishing] = useState(false);
 
   // Re-fetch artifacts whenever the job (or its stream's terminal state) changes.
   useEffect(() => {
@@ -34,6 +35,16 @@ export function JobDetail({ job, onDecision }: Props) {
   }, [job.id, finalState]);
 
   const canDecide = job.state === "awaiting_approval";
+  const prUrl = typeof job.cost.pr_url === "string" ? job.cost.pr_url : null;
+
+  async function publish() {
+    setPublishing(true);
+    try {
+      await publishJob(job.id);
+    } finally {
+      setPublishing(false);
+    }
+  }
 
   async function decide(kind: "approve" | "reject") {
     setBusy(true);
@@ -144,6 +155,30 @@ export function JobDetail({ job, onDecision }: Props) {
             Reject
           </button>
           {actionError && <span className="text-xs text-rose-600">{actionError}</span>}
+        </section>
+      )}
+
+      {job.state === "approved" && job.publish_capable && (
+        <section className="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-4">
+          {prUrl ? (
+            <a
+              href={prUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-sm font-medium text-emerald-700 underline"
+            >
+              {prUrl}
+            </a>
+          ) : (
+            <button
+              type="button"
+              onClick={publish}
+              disabled={publishing}
+              className="rounded bg-emerald-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {publishing ? "Publishing…" : "Publish draft PR"}
+            </button>
+          )}
         </section>
       )}
     </div>

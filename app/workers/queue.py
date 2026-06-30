@@ -55,6 +55,14 @@ class JobQueue:
         log.info("enqueue_job", job_id=str(job_id), enqueued=enqueued)
         return enqueued
 
+    async def enqueue_task(self, task: str, *args: object, dedup_key: str | None = None) -> bool:
+        """Enqueue an arbitrary worker task. Dedup by ``dedup_key`` when given."""
+        kwargs = {"_job_id": dedup_key} if dedup_key else {}
+        job = await self._pool.enqueue_job(task, *args, **kwargs)  # type: ignore[attr-defined]
+        enqueued = job is not None
+        log.info("enqueue_task", task=task, enqueued=enqueued)
+        return enqueued
+
     async def close(self) -> None:
         close = getattr(self._pool, "aclose", None) or getattr(self._pool, "close", None)
         if close is not None:

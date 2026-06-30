@@ -10,11 +10,12 @@ vi.mock("../api", async () => {
     ...actual,
     approveJob: vi.fn(),
     rejectJob: vi.fn(),
+    publishJob: vi.fn(),
     getArtifact: vi.fn().mockRejectedValue(new Error("none")),
   };
 });
 
-import { approveJob, rejectJob } from "../api";
+import { approveJob, publishJob, rejectJob } from "../api";
 
 class NoopEventSource {
   addEventListener() {}
@@ -41,6 +42,8 @@ function makeJob(overrides: Partial<Job> = {}): Job {
       tests_pass: true,
       flags: {},
     },
+    repo_full_name: "octo/demo",
+    publish_capable: false,
     ...overrides,
   };
 }
@@ -91,5 +94,40 @@ describe("JobDetail", () => {
     await userEvent.click(screen.getByRole("button", { name: /approve/i }));
     await waitFor(() => expect(screen.getByText(/job is 'running'/)).toBeInTheDocument());
     expect(onDecision).not.toHaveBeenCalled();
+  });
+
+  it("shows Publish only when approved + capable", async () => {
+    const pub = vi.mocked(publishJob).mockResolvedValue({ status: "publishing" });
+    const job = makeJob({ state: "approved", publish_capable: true });
+    render(<JobDetail job={job} onDecision={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: /publish draft pr/i }));
+    expect(pub).toHaveBeenCalledWith("job-1");
+  });
+
+  it("hides Publish when the job is not publish-capable", async () => {
+    render(
+      <JobDetail
+        job={makeJob({ state: "approved", publish_capable: false })}
+        onDecision={vi.fn()}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("Live log")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /publish draft pr/i })).toBeNull();
+  });
+
+  it("renders the PR url as a link instead of the button once published", async () => {
+    render(
+      <JobDetail
+        job={makeJob({
+          state: "approved",
+          publish_capable: true,
+          cost: { pr_url: "https://github.com/octo/demo/pull/1" },
+        })}
+        onDecision={vi.fn()}
+      />,
+    );
+    const link = await screen.findByRole("link", { name: /https:\/\/github.com\/octo\/demo\/pull\/1/i });
+    expect(link).toHaveAttribute("href", "https://github.com/octo/demo/pull/1");
+    expect(screen.queryByRole("button", { name: /publish draft pr/i })).toBeNull();
   });
 });

@@ -108,6 +108,7 @@ class ArtifactKind(enum.StrEnum):
     REASONING = "reasoning"
     ISSUE_BODY = "issue_body"
     TRACE = "trace"  # replayable agent trace (Phase 10); VARCHAR enum -> no migration
+    BUNDLE = "bundle"  # serialized FixBundle JSON for the publish path
 
 
 class ArtifactStorage(enum.StrEnum):
@@ -126,9 +127,11 @@ class Repo(Base):
     __tablename__ = "repo"
 
     id: Mapped[uuid.UUID] = uuid_pk()
-    gh_repo_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
+    gh_repo_id: Mapped[int | None] = mapped_column(
+        BigInteger, unique=True, index=True, nullable=True
+    )
     full_name: Mapped[str] = mapped_column(String(255), index=True)
-    installation_id: Mapped[int] = mapped_column(BigInteger)
+    installation_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     default_branch: Mapped[str] = mapped_column(String(255), default="main")
     language: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = created_at_column()
