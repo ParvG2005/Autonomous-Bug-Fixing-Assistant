@@ -100,6 +100,30 @@ def test_run_command_rejects_disallowed_command(workspace: Path) -> None:
     assert "not allowlisted" in text
 
 
+def test_edit_file_flags_sensitive_path(workspace: Path) -> None:
+    # A lockfile edit must be refused (flagged), never silently applied.
+    (workspace / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    ex = _executor(workspace)
+    text, is_error = ex.dispatch(
+        "edit_file", {"path": "uv.lock", "old_str": "version = 1", "new_str": "version = 2"}
+    )
+    assert is_error
+    assert "lockfile" in text
+    assert ex.edits == []
+    assert ex.flags  # the refusal is recorded as a flag
+    assert (workspace / "uv.lock").read_text() == "version = 1\n"
+
+
+def test_edit_file_refuses_when_diff_budget_exceeded(workspace: Path) -> None:
+    ex = _executor(workspace, max_diff_lines=2)
+    big = "\n".join(f"line {i}" for i in range(20))
+    text, is_error = ex.dispatch("edit_file", {"path": "new.py", "old_str": "", "new_str": big})
+    assert is_error
+    assert "budget" in text
+    assert ex.edits == []
+    assert not (workspace / "new.py").exists()
+
+
 def test_dispatch_rejects_disallowed_tool(workspace: Path) -> None:
     # An allowlist without edit_file must reject it before any file is touched.
     restricted = Allowlist(tools=frozenset({"read_file"}))

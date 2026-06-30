@@ -22,7 +22,14 @@ Design docs live in [`docs/`](docs/README.md). Build order is in
   `run_tests` / `run_command` — every call gated by the `app.core.allowlist` validator before
   dispatch and every execution tool run inside the sandbox; a planning step, a retry/token/
   time budget, and an authoritative final-test verification; `bugfix-agent` CLI.
-- ⬜ Phases 4–14: see the build plan.
+- ✅ **Phase 4 — issue → reproduce → localize → fix → explain** ⭐ core milestone: parse raw
+  issue text / stack traces into a structured task (`app.agent.issue`); rank suspect files from
+  traceback frames + referenced paths + symbols (`app.agent.localize`); drive the agent to
+  reproduce (writing a failing test if none exists), fix, and self-correct; **edit guardrails**
+  (`app.agent.guardrails`) flag — never silently edit — CI config / lockfiles / secrets and cap
+  the diff size; a deterministic Markdown reasoning writeup + change summary (`app.agent.writeup`);
+  orchestrated by `app.agent.solve` and the `bugfix-agent solve` CLI.
+- ⬜ Phases 5–14: see the build plan.
 
 ## Quickstart
 
@@ -78,6 +85,20 @@ uv run bugfix-agent fix ./workspaces/some-repo --task "..." --local   # no Docke
 verdict from an authoritative final test run — the Phase 3 acceptance behavior. The
 API-backed acceptance test is marked `integration` (skips without a key); run it with
 `uv run pytest -m integration`.
+
+```bash
+# Phase 4: give it a raw issue (or a stack trace) and get a verified patch + writeup.
+uv run bugfix-agent solve ./workspaces/some-repo \
+  --issue "divide(1, 0) raises ZeroDivisionError; it should return 0. See calc.py." \
+  --writeup-out fix.md        # write the reasoning writeup to a file
+uv run bugfix-agent solve ./workspaces/some-repo --issue-file issue.txt --local
+```
+
+`solve` parses the issue, **ranks suspect files**, drives the agent to reproduce (writing a
+failing test when none exists), fix, and verify, then prints the diff plus a Markdown reasoning
+writeup — the Phase 4 core milestone. Edits to CI config, lockfiles, or secret-bearing files are
+**flagged and refused, never silently applied**, and the diff is size-capped. The API-backed
+acceptance is marked `integration`.
 
 ## Layout
 

@@ -3,13 +3,53 @@
 > Running progress log. Update this at the end of every working session: what got done, what's
 > left, and anything the next session needs to know. Most recent entry on top.
 
-## Current status: PHASES 0 + 1 + 2 + 3 COMPLETE — agent turns a failing test green
+## Current status: PHASES 0–4 COMPLETE — issue text → verified patch + writeup ⭐
 
-Phases 0–3 are built, tested, and lint/type-clean. On top of the repo brain (Phase 1) and the
-sandboxed test runner (Phase 2), the Phase 3 agent loop drives an Anthropic tool-use loop that
-reads/searches the repo, edits the source, runs tests in the sandbox, and self-corrects within
-a budget — producing a diff that turns a known failing test green. Next: Phase 4 (issue →
-reproduce → localize → fix → explain, the core milestone).
+Phases 0–4 are built, tested, and lint/type-clean. On top of the Phase 3 agent loop, Phase 4
+(the core milestone, never cut) takes **raw issue text or a stack trace** and produces a
+**verified patch plus a reasoning writeup**: it parses the issue, ranks suspect files, drives
+the agent to reproduce (writing a failing test if none exists), fix, and self-correct, enforces
+edit guardrails, and assembles a Markdown writeup. Verified against the real API on two
+scenarios (source-only bug → agent authors a reproduction test; traceback issue → localize +
+fix). Next: Phase 5 (GitHub integration — human-gated draft PR; **STOP-AND-ASK before the first
+real PR**).
+
+### Session 5 (2026-06-30) — Phase 4: issue → reproduce → localize → fix → explain ⭐
+
+- **`app/agent/issue.py`:** `IssueTask` + `parse_issue` — lexical distillation of issue text /
+  stack traces into `{title, body, error_type, error_message, frames, referenced_paths,
+  test_nodeids, identifiers}`. Reuses the Phase 2 `parse_frames`; never invents an exception when
+  there's no traceback. `to_prompt()` renders the signals for the agent.
+- **`app/agent/localize.py`:** `Suspect` + `rank_suspects(brain, task)` — fuses traceback frames
+  (innermost weighted highest), existing referenced paths, and identifier→symbol-definition
+  files; test files penalized so source ranks above tests. Deterministic, capped at `limit`.
+- **`app/agent/guardrails.py`:** `sensitive_reason(path)` classifies CI config / lockfiles /
+  secrets (by path, not content); `check_diff_budget` caps cumulative changed lines
+  (`DEFAULT_MAX_DIFF_LINES=200`). Wired into `ToolExecutor._edit_file`: a sensitive edit is
+  **refused and recorded as a flag** (returned to the model as an error), and an over-budget edit
+  is applied-then-rolled-back (`_rollback`) and refused. `ToolExecutor` gained `flags` +
+  `max_diff_lines`.
+- **`app/agent/writeup.py`:** `change_summary(edits)` (files / +insertions / -deletions, pure)
+  and `build_writeup(task, suspects, result, flags)` — deterministic Markdown (issue, localization,
+  root-cause, embedded ```diff, verification verdict, guardrail flags). No extra model call.
+- **`app/agent/solve.py`:** `solve_issue(...)` orchestrator → `SolveResult` (task, suspects,
+  agent, flags, writeup, summary). A test node id in the issue scopes the authoritative
+  verification; otherwise the whole suite runs (so a freshly written reproduction test counts).
+  Model client injected (offline-testable). `prompts.py` gained a reproduce-first rule + the
+  guardrail rule + `build_solve_prompt`.
+- **CLI:** `bugfix-agent solve <ws> --issue/--issue-file [--writeup-out] [--local]`.
+  - **Acceptance ✅:** `tests/integration/test_solve_acceptance.py` (marked `integration`) — two
+    real-API scenarios pass: (1) `source_only_bug` (no test) → agent writes a reproduction test,
+    fixes `titleize`, RESOLVED; (2) traceback issue → `calc.py` ranked first, fixed, RESOLVED.
+    Ran in ~263s on the local sandbox.
+  - **Offline tests:** issue parser, localizer, guardrails (sensitive paths + diff budget),
+    executor guardrail enforcement, writeup/change-summary, the `solve` orchestrator (scripted
+    fake client + real LocalSandbox), and CLI smoke tests. Full offline suite: **105 passed, 1
+    skipped**; ruff + format + mypy clean.
+  - **Gotcha:** `str.lstrip("./")` strips leading dots/slashes as a *char set*, not a prefix — it
+    turned `.github/...`/`.env` into `github/...`/`env` and broke sensitive-path detection; use an
+    explicit `"./"` prefix strip. Guardrail rollback relies on `apply_edit` only ever producing an
+    empty `before` for a newly-created file (so empty-before ⟺ safe to unlink).
 
 ### Session 4 (2026-06-30) — Phase 3: agent loop (core)
 
@@ -136,7 +176,8 @@ acceptance tests are in `docs/BUILD_PLAN.md`. Phases not started:
       frame parser; local subprocess fallback; `bugfix-run` CLI)
 - [x] Phase 3 — agent loop (Anthropic tool-use loop; allowlisted tools; planning + budget;
       `bugfix-agent` CLI; turns a known failing test green)
-- [ ] Phase 4 — issue→reproduce→localize→fix→explain ⭐ core milestone
+- [x] Phase 4 — issue→reproduce→localize→fix→explain ⭐ core milestone (issue.py / localize.py /
+      guardrails.py / writeup.py / solve.py + `bugfix-agent solve`; acceptance verified on real API)
 - [ ] Phase 5 — GitHub integration, human-gated draft PR ⭐
 - [ ] Phase 6 — FastAPI + Postgres/Alembic + webhook
 - [ ] Phase 7 — arq workers + state machine
@@ -170,4 +211,4 @@ Start Phase 0 scaffold (no external access needed) so Phase 1 can begin the mome
 land. Phase 1's repo-brain CLI is also buildable + testable without Docker or an API key.
 
 ---
-_Last updated: 2026-06-30 — design baseline._
+_Last updated: 2026-06-30 — Phase 4 complete (core milestone)._

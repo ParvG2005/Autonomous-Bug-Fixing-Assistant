@@ -114,3 +114,23 @@ def agent_fixable(tmp_path: Path) -> Path:
     (tmp_path / "mathutil.py").write_text(_MATHUTIL, encoding="utf-8")
     (tmp_path / "test_mathutil.py").write_text(_TEST_MATHUTIL, encoding="utf-8")
     return tmp_path
+
+
+# A source-only project (NO test file) for the Phase 4 milestone: the agent must
+# write a reproduction test for the reported bug before fixing it. ``titleize``
+# upper-cases instead of title-casing.
+_STRINGUTIL = '''\
+"""String helpers."""
+
+
+def titleize(text):
+    return text.upper()
+'''
+
+
+@pytest.fixture
+def source_only_bug(tmp_path: Path) -> Path:
+    """A buggy module with no tests — Phase 4 must author a reproduction test."""
+    (tmp_path / "stringutil.py").write_text(_STRINGUTIL, encoding="utf-8")
+    (tmp_path / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    return tmp_path

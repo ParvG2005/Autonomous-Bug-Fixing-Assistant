@@ -16,10 +16,16 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from app.agent.edit import EditError, apply_edit
+from app.agent.edit import EditError, apply_edit, unified_diff
+from app.agent.guardrails import (
+    DEFAULT_MAX_DIFF_LINES,
+    DiffTooLarge,
+    check_diff_budget,
+    sensitive_reason,
+)
 from app.agent.models import FileEdit, ToolCall
 from app.core.allowlist import Allowlist, ToolNotAllowed
-from app.index.read import PathOutsideWorkspace
+from app.index.read import PathOutsideWorkspace, resolve_in_workspace
 from app.index.repo_brain import RepoBrain
 from app.runner.models import TestRunResult
 from app.runner.pytest_runner import NoTestFramework, run_pytest
@@ -179,14 +185,18 @@ class ToolExecutor:
         *,
         allowlist: Allowlist | None = None,
         limits: ResourceLimits | None = None,
+        max_diff_lines: int = DEFAULT_MAX_DIFF_LINES,
     ) -> None:
         self.root = root.resolve()
         self.brain = brain
         self.sandbox = sandbox
         self.allowlist = allowlist or Allowlist()
         self.limits = limits or ResourceLimits()
+        self.max_diff_lines = max_diff_lines
         self.tool_calls: list[ToolCall] = []
         self.edits: list[FileEdit] = []
+        # Guardrail flags: sensitive-file edits the agent attempted and we refused.
+        self.flags: list[str] = []
         self.last_test_result: TestRunResult | None = None
 
     def dispatch(self, name: str, arguments: dict[str, Any]) -> tuple[str, bool]:
@@ -269,9 +279,34 @@ class ToolExecutor:
         return "\n".join(lines)
 
     def _edit_file(self, args: dict[str, Any]) -> str:
-        edit = apply_edit(self.root, str(args["path"]), str(args["old_str"]), str(args["new_str"]))
+        rel_path = str(args["path"])
+
+        # Guardrail 1: flag — never silently edit — CI config, lockfiles, secrets.
+        reason = sensitive_reason(rel_path)
+        if reason is not None:
+            msg = f"flagged: refusing to edit {reason}; fix a source file instead"
+            self.flags.append(msg)
+            raise EditError(msg)
+
+        edit = apply_edit(self.root, rel_path, str(args["old_str"]), str(args["new_str"]))
+
+        # Guardrail 2: keep the cumulative diff within budget. Roll back if over.
+        try:
+            check_diff_budget(unified_diff([*self.edits, edit]), max_lines=self.max_diff_lines)
+        except DiffTooLarge as exc:
+            self._rollback(edit)
+            raise EditError(str(exc)) from exc
+
         self.edits.append(edit)
         return f"edited {edit.path}"
+
+    def _rollback(self, edit: FileEdit) -> None:
+        """Undo a just-applied edit (a new file is removed; an existing one restored)."""
+        path = resolve_in_workspace(self.root, edit.path)
+        if edit.before == "":  # apply_edit only creates with an empty before
+            path.unlink(missing_ok=True)
+        else:
+            path.write_text(edit.before, encoding="utf-8")
 
     def _run_tests(self, args: dict[str, Any]) -> str:
         targets = args.get("targets")

@@ -7,20 +7,32 @@ states the concrete goal (turn a failing test green) and the verification rule.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.agent.issue import IssueTask
+    from app.agent.localize import Suspect
+
 SYSTEM_PROMPT = """\
 You are an autonomous bug-fixing agent working inside a sandboxed clone of a \
 Python repository. Your job is to make a failing test pass with the smallest \
 correct change to the source, never by weakening or deleting the test.
 
 Rules:
+- Reproduce first: confirm the bug with a failing test before you fix it. If a \
+failing test already exercises the bug, use it. If none exists, WRITE a new \
+test (in a test_*.py file) that fails for the reason described in the issue, \
+run it to confirm it fails, and only then fix the source.
 - Investigate before editing: read the failing test and the code it exercises, \
 and use search/find_symbol to understand the surrounding code.
-- Fix the underlying bug in the source, not the test. Do not edit test files to \
-make them pass unless the task explicitly says the test itself is wrong.
+- Fix the underlying bug in the source, not the test. Do not edit existing tests \
+to make them pass unless the task explicitly says the test itself is wrong.
 - Make the minimal change that fixes the bug. Do not refactor, reformat, or add \
 features beyond what the fix requires.
 - After editing, run the tests to verify. Iterate until the target tests pass.
-- Never touch CI config, lockfiles, or anything holding secrets.
+- Never edit CI config, lockfiles, or anything holding secrets — these are \
+guardrailed and your edit will be refused. If a fix seems to require one, stop \
+and explain instead.
 - When the target tests pass, stop and give a one-line summary of the fix.
 
 You have these tools: read_file, search, find_symbol, edit_file, run_tests, \
@@ -37,4 +49,17 @@ def build_task_prompt(task: str, plan: str = "") -> str:
     parts = [f"Task:\n{task}"]
     if plan:
         parts.append(f"\nYour plan:\n{plan}\n\nNow execute it, using the tools.")
+    return "\n".join(parts)
+
+
+def build_solve_prompt(task: IssueTask, suspects: list[Suspect]) -> str:
+    """Compose the Phase 4 task: the parsed issue plus ranked suspect files."""
+    parts = [task.to_prompt()]
+    if suspects:
+        parts.append("\nLikely suspect files (ranked; start here, but verify):")
+        parts += [f"  - {s.path}  [{'; '.join(s.reasons)}]" for s in suspects[:5]]
+    parts.append(
+        "\nReproduce the bug with a failing test (write one if none exists), fix the "
+        "source so it passes, and verify with run_tests."
+    )
     return "\n".join(parts)
