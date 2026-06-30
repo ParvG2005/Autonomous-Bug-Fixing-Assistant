@@ -1,0 +1,6 @@
+{
+  "id": "01-titleize",
+  "language": "python",
+  "title": "titleize() upper-cases instead of title-casing",
+  "expected_edit_paths": ["stringutil.py"]
+}

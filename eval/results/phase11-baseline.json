@@ -1,0 +1,46 @@
+{
+  "suite": "custom",
+  "model": "claude-sonnet-4-6",
+  "label": "phase11-baseline",
+  "metrics": {
+    "total": 3,
+    "resolved": 3,
+    "resolve_rate": 1.0,
+    "regression_rate": 0.0,
+    "mean_time_to_fix_s": 33.226333333333336,
+    "cost_per_fix_usd": 0.06932,
+    "total_cost_usd": 0.20796
+  },
+  "cases": [
+    {
+      "case_id": "01-titleize",
+      "language": "python",
+      "resolved": true,
+      "edited": true,
+      "cost_usd": 0.07455,
+      "duration_s": 36.695,
+      "stop_reason": "resolved",
+      "error": null
+    },
+    {
+      "case_id": "02-divide-by-zero",
+      "language": "python",
+      "resolved": true,
+      "edited": true,
+      "cost_usd": 0.073395,
+      "duration_s": 38.447,
+      "stop_reason": "resolved",
+      "error": null
+    },
+    {
+      "case_id": "03-factorial-off-by-one",
+      "language": "python",
+      "resolved": true,
+      "edited": true,
+      "cost_usd": 0.060015,
+      "duration_s": 24.537,
+      "stop_reason": "resolved",
+      "error": null
+    }
+  ]
+}

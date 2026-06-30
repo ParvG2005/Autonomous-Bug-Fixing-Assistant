@@ -3,7 +3,54 @@
 > Running progress log. Update this at the end of every working session: what got done, what's
 > left, and anything the next session needs to know. Most recent entry on top.
 
-## Current status: PHASES 0–10 COMPLETE — observability + cost accounting
+## Current status: PHASES 0–11 COMPLETE — eval harness (headline resolve rate)
+
+Phase 11 (Eval harness) turns the Phase 4 `solve_issue` pipeline into a measurable benchmark: a *suite*
+of buggy cases, each run end-to-end, scored with the **same `app.telemetry.metrics`** the live fleet
+uses. One command (`bugfix-eval run`) prints the headline resolve rate.
+
+- **`eval/dataset.py`:** `EvalCase` value object (id, issue text, a way to materialize a fresh
+  workspace) + `load_suite`. The shipped **custom** suite lives at `eval/data/<suite>/<case>/` as
+  `meta.json` + `issue.md` + `workspace/`. `EvalCase.materialize` writes inline `files`, or defers to
+  a `setup` callable (the seam the SWE-bench clone path uses) — so both dataset sources run one path.
+- **`eval/harness.py`:** `run_case` materializes a case → runs `solve_issue` → distills a `CaseResult`
+  (resolved / edited / cost_usd via `cost.cost_usd` / duration). Every failure (materialize/clone,
+  sandbox, model) is caught and recorded as a non-resolved result so **one bad case never aborts the
+  suite**. Client, sandbox, and clock are injected → the whole harness runs offline against a scripted
+  fake + `LocalSandbox`. `run_suite` streams a `progress` callback per case.
+- **`eval/score.py`:** maps `CaseResult` → `metrics.JobOutcome` and calls the fleet's `compute_metrics`
+  (so eval numbers == fleet numbers). `EvalReport` (headline + per-case), `save_report`/`load_report`,
+  and `score_delta(prev, cur)` — the **tuning loop**: run, tweak retry budget / localization / prompts,
+  re-run, diff the recorded scores. `prev` accepts a stored report's `metrics` dict.
+- **`eval/swebench.py`:** SWE-bench-lite loader, **gated behind the dataset + network** (like the
+  Phase 5/8 acceptance). `load_instances` parses a JSONL offline; `materialize_instance` clones the
+  repo at `base_commit` + applies the instance `test_patch` (git injected → fakeable). `bugfix-eval
+  run --suite swebench-lite --jsonl <path>` wires it. Not run in CI.
+- **`eval/cli.py`:** `bugfix-eval list|run`. A real run **costs tokens** → the build-plan stop-and-ask
+  gate is enforced in code: `run` refuses without `--confirm` (and without `ANTHROPIC_API_KEY`).
+  `--out` saves a report; `--compare` diffs against a saved one. Registered as the `bugfix-eval` script;
+  `eval` added to the wheel packages; `eval/data` ruff-excluded (intentionally-buggy fixtures).
+
+Acceptance (Phase 11): **single command runs the eval and prints the headline resolve rate.** Verified
+on the **real Anthropic API** — `bugfix-eval run --suite custom --confirm` scored
+**resolve rate 100.0% (3/3)**, regression 0.0%, mean time-to-fix 33.2s, cost-per-fix $0.069, total spend
+**$0.208** on `claude-sonnet-4-6` (baseline saved to `eval/results/phase11-baseline.json`).
+Offline-covered: dataset loader, harness (resolve + injected-clock duration + error-degradation +
+progress), scoring + deltas, SWE-bench parse + fake-git materialize, CLI list + spend/key/jsonl gates
+(`tests/unit/test_eval_*.py`); the real-API headline is `tests/integration/test_eval_acceptance.py`
+(marked `integration`). Whole suite: **292 passed, 4 skipped** offline (+9 integration deselected);
+ruff + format + mypy clean; `alembic check` drift-free (Phase 11 added no schema). New runtime deps: none.
+
+**Next session:** Phase 12 (React dashboard) — list runs, run detail + diff + reasoning trace, live SSE
+status, approve/reject wired to the human gate. Still open from Phase 7: migrate the APPROVAL store off
+the JSON file onto the `approval` table behind the same `ApprovalStore` protocol, and wire
+approve/reject endpoints + the Phase 5 publish path at the `awaiting_approval` gate (the dashboard's
+approve button is the natural driver). For a *real* SWE-bench-lite number, export the
+`princeton-nlp/SWE-bench_Lite` split to JSONL and run `bugfix-eval run --suite swebench-lite` at cost.
+
+---
+
+## Earlier: PHASES 0–10 COMPLETE — observability + cost accounting
 
 Phase 10 (Observability + cost) makes any past run reconstructable and reports cost per job. It
 also fixes a Phase 9 CI regression first (see below).
@@ -434,7 +481,9 @@ acceptance tests are in `docs/BUILD_PLAN.md`. Phases not started:
       proving C1–C5 across §5 categories 1–7; 62 red-team tests green, live container checks pass)
 - [x] Phase 10 — observability + cost (cost accounting + USD price table; replayable secret-free
       TRACE artifact + Langfuse mirror; resolve/regression/time-to-fix/cost-per-fix metrics + `/metrics`)
-- [ ] Phase 11 — eval harness (SWE-bench-lite + custom set)
+- [x] Phase 11 — eval harness (custom buggy-commit set offline-tested + SWE-bench-lite loader gated;
+      resolve/regression scoring reusing `app.telemetry.metrics`; `score_delta` tuning loop;
+      `bugfix-eval run` prints the headline number — real-API baseline 100% (3/3), $0.208)
 - [ ] Phase 12 — React dashboard (SSE, approve/reject)
 - [ ] Phase 13 — deploy + CI/CD (Fly.io, migrations, rollback)
 - [ ] Phase 14 — docs + demo + final eval number
@@ -461,8 +510,8 @@ Start Phase 0 scaffold (no external access needed) so Phase 1 can begin the mome
 land. Phase 1's repo-brain CLI is also buildable + testable without Docker or an API key.
 
 ---
-_Last updated: 2026-06-30 — Phase 10 complete (observability + cost): per-model USD cost accounting,
-a replayable secret-free TRACE artifact + optional Langfuse mirror, and resolve/regression/
-time-to-fix/cost-per-fix metrics behind `GET /metrics`. Also fixed a Phase 9 CI regression
-(live red-team docker tests now gate on the image, not just the CLI). Whole suite: **270 passed,
-4 skipped** offline; ruff + format + mypy clean; alembic drift-free._
+_Last updated: 2026-06-30 — Phase 11 complete (eval harness): a custom buggy-commit suite + a gated
+SWE-bench-lite loader, scored with the fleet's own `app.telemetry.metrics`, a `score_delta` tuning
+loop, and one command (`bugfix-eval run`) that prints the headline resolve rate. Real-API baseline:
+**100% (3/3)**, regression 0%, $0.208 total on claude-sonnet-4-6. Whole suite: **292 passed, 4 skipped**
+offline; ruff + format + mypy clean; alembic drift-free._

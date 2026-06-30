@@ -1,0 +1,6 @@
+{
+  "id": "02-divide-by-zero",
+  "language": "python",
+  "title": "divide() crashes on a zero denominator",
+  "expected_edit_paths": ["calc.py"]
+}

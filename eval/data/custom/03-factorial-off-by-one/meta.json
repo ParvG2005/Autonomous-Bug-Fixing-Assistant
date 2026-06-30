@@ -1,0 +1,6 @@
+{
+  "id": "03-factorial-off-by-one",
+  "language": "python",
+  "title": "factorial() is off by one (wrong range bound)",
+  "expected_edit_paths": ["mathutil.py"]
+}
