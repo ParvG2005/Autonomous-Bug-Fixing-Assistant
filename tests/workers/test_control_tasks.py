@@ -1,6 +1,7 @@
 import pytest
 from sqlalchemy import select
 
+from app.core.settings import get_settings
 from app.db.repos import create_repo
 from app.models.entities import Repo
 from app.workers import control_tasks
@@ -68,3 +69,35 @@ async def test_connect_repo_unavailable_on_resolve_failure(db, monkeypatch):
         repo = (await s.execute(select(Repo).where(Repo.id == repo.id))).scalar_one()
         assert repo.installation_id is None
         assert repo.gh_repo_id is None
+
+
+@pytest.mark.asyncio
+async def test_scan_repo_clones_and_scans(db, monkeypatch, tmp_path):
+    async with db.session() as s:
+        repo = await create_repo(s, "octo/demo")
+        await s.commit()
+        rid = str(repo.id)
+
+    calls = {}
+
+    def fake_clone(url, dest, **kw):
+        calls["clone"] = (url, dest)
+        return dest
+
+    async def fake_run_scan(database, full_name, workspace, **kw):
+        calls["scan"] = (full_name, kw.get("promote"))
+        from app.discovery.service import ScanSummary
+
+        return ScanSummary(
+            scan_id="s1", sources_run=[], candidates=0, parked=0, duplicates=0, errors={}
+        )
+
+    monkeypatch.setattr(control_tasks, "clone_repo", fake_clone)
+    monkeypatch.setattr(control_tasks, "run_scan", fake_run_scan)
+    monkeypatch.setattr(control_tasks, "get_sandbox", lambda: object())
+
+    ctx = {"db": db, "settings": get_settings()}
+    result = await control_tasks.scan_repo(ctx, rid)
+    assert result == "scanned"
+    assert calls["clone"][0] == "https://github.com/octo/demo.git"
+    assert calls["scan"] == ("octo/demo", False)
