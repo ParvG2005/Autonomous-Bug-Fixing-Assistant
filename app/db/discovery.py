@@ -71,8 +71,10 @@ async def known_fingerprints(session: AsyncSession, repo_id: object) -> set[str]
     refiled (the acceptance test's "re-scan does not refile" guarantee).
     """
     rows = (
-        await session.execute(select(Finding.fingerprint).where(Finding.repo_id == repo_id))
-    ).scalars().all()
+        (await session.execute(select(Finding.fingerprint).where(Finding.repo_id == repo_id)))
+        .scalars()
+        .all()
+    )
     return set(rows)
 
 

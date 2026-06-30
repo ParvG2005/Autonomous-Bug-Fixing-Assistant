@@ -301,9 +301,7 @@ class Finding(Base):
     frames: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
     confidence: Mapped[float] = mapped_column(Float, default=0.0)
     severity: Mapped[str] = mapped_column(String(32), default="medium")
-    status: Mapped[FindingStatus] = enum_column(
-        FindingStatus, default=FindingStatus.CANDIDATE
-    )
+    status: Mapped[FindingStatus] = enum_column(FindingStatus, default=FindingStatus.CANDIDATE)
     job_id: Mapped[uuid.UUID | None] = fk_uuid("job.id", nullable=True)
     created_at: Mapped[datetime] = created_at_column()
 

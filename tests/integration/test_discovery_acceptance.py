@@ -181,9 +181,7 @@ async def test_discovery_promotes_repros_and_parks_at_human_gate(
         assert finding.job_id is not None
 
 
-async def test_rescan_does_not_refile_a_known_finding(
-    db: Database, agent_fixable: Path
-) -> None:
+async def test_rescan_does_not_refile_a_known_finding(db: Database, agent_fixable: Path) -> None:
     repo_id = await _make_repo(db)
 
     first = await _scan_and_promote(db, repo_id, agent_fixable)

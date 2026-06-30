@@ -15,9 +15,7 @@ from app.runner.models import Framework
 
 RUBY_IMAGE = "bugfix-sandbox-ruby:latest"
 
-_FRAME_RE = re.compile(
-    r"(?P<file>[\w./@+-]+\.rb):(?P<line>\d+)(?::in [`'](?P<func>[^'\"]+)['\"])?"
-)
+_FRAME_RE = re.compile(r"(?P<file>[\w./@+-]+\.rb):(?P<line>\d+)(?::in [`'](?P<func>[^'\"]+)['\"])?")
 _SUMMARY_RE = re.compile(r"(?P<examples>\d+) examples?,\s+(?P<failures>\d+) failures?")
 
 

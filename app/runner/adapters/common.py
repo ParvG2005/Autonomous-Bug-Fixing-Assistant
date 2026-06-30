@@ -21,8 +21,18 @@ from app.runner.models import Framework, Outcome, TestFailure, TestRunResult, Tr
 from app.sandbox.models import ExecResult
 
 _SKIP_DIRS = {
-    ".git", "node_modules", "vendor", "target", "build", "dist", "bin", "obj",
-    "__pycache__", ".venv", ".gradle", ".mvn",
+    ".git",
+    "node_modules",
+    "vendor",
+    "target",
+    "build",
+    "dist",
+    "bin",
+    "obj",
+    "__pycache__",
+    ".venv",
+    ".gradle",
+    ".mvn",
 }
 
 

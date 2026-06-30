@@ -32,8 +32,15 @@ _MYPY_RE = re.compile(
 )
 # mypy codes that point at latent runtime crashes worth reproducing.
 _MYPY_BUG_CODES = {
-    "union-attr", "attr-defined", "index", "operator", "arg-type",
-    "return-value", "call-arg", "assignment", "name-defined",
+    "union-attr",
+    "attr-defined",
+    "index",
+    "operator",
+    "arg-type",
+    "return-value",
+    "call-arg",
+    "assignment",
+    "name-defined",
 }
 
 

@@ -53,9 +53,26 @@ def test_only_the_documented_commands_are_allowed() -> None:
     # scanners (detectors call the sandbox directly, never via the agent).
     assert Allowlist().commands == frozenset(
         {
-            "python", "pytest", "pip", "node", "npm", "npx", "go", "ls",
-            "cargo", "ruby", "bundle", "rspec", "rake",
-            "mvn", "gradle", "dotnet", "php", "phpunit", "composer", "mix",
+            "python",
+            "pytest",
+            "pip",
+            "node",
+            "npm",
+            "npx",
+            "go",
+            "ls",
+            "cargo",
+            "ruby",
+            "bundle",
+            "rspec",
+            "rake",
+            "mvn",
+            "gradle",
+            "dotnet",
+            "php",
+            "phpunit",
+            "composer",
+            "mix",
         }
     )
 

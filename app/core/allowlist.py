@@ -29,12 +29,29 @@ class Allowlist:
     commands: frozenset[str] = field(
         default_factory=lambda: frozenset(
             {
-                "python", "pytest", "pip", "node", "npm", "npx", "go", "ls",
+                "python",
+                "pytest",
+                "pip",
+                "node",
+                "npm",
+                "npx",
+                "go",
+                "ls",
                 # Phase 8 extension — multi-language test toolchains the agent runs.
                 # (Discovery scanners — ruff/mypy/git — are NOT here: detectors call
                 # the sandbox directly, so the agent never gains git/push reach. C5.)
-                "cargo", "ruby", "bundle", "rspec", "rake",
-                "mvn", "gradle", "dotnet", "php", "phpunit", "composer", "mix",
+                "cargo",
+                "ruby",
+                "bundle",
+                "rspec",
+                "rake",
+                "mvn",
+                "gradle",
+                "dotnet",
+                "php",
+                "phpunit",
+                "composer",
+                "mix",
             }
         )
     )

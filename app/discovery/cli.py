@@ -103,8 +103,15 @@ def run(
     _print_summary(repo, summary, promoted=confirm)
 
 
-async def _run(*, settings_db_url: str, repo: str, workspace: Path, detectors: list[Detector],
-               max_jobs: int, promote: bool) -> ScanSummary:
+async def _run(
+    *,
+    settings_db_url: str,
+    repo: str,
+    workspace: Path,
+    detectors: list[Detector],
+    max_jobs: int,
+    promote: bool,
+) -> ScanSummary:
     db = Database(settings_db_url)
     try:
         return await run_scan(
@@ -123,8 +130,7 @@ async def _run(*, settings_db_url: str, repo: str, workspace: Path, detectors: l
 
 def _print_summary(repo: str, s: ScanSummary, *, promoted: bool) -> None:
     console.print(
-        f"\n[bold]scan {s.scan_id}[/bold] of {repo} "
-        f"(sources: {', '.join(s.sources_run) or 'none'})"
+        f"\n[bold]scan {s.scan_id}[/bold] of {repo} (sources: {', '.join(s.sources_run) or 'none'})"
     )
     console.print(f"  candidates : {s.candidates}")
     console.print(f"  duplicates : {s.duplicates} (already known — not refiled)")
