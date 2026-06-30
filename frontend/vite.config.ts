@@ -10,7 +10,7 @@ declare const process: { env: Record<string, string | undefined> };
 // can use same-origin relative URLs (and SSE works without CORS preflight).
 const API_TARGET = process.env.VITE_API_TARGET ?? "http://localhost:8000";
 const proxy = Object.fromEntries(
-  ["/jobs", "/metrics", "/healthz", "/findings", "/scans"].map((p) => [
+  ["/jobs", "/repos", "/metrics", "/healthz", "/findings", "/scans"].map((p) => [
     p,
     { target: API_TARGET, changeOrigin: true },
   ]),
