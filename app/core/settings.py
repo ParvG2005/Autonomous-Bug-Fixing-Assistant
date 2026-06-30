@@ -36,7 +36,13 @@ class Settings(BaseSettings):
 
     # --- Data stores (later phases) ---
     database_url: str | None = None
+    db_echo: bool = False
     redis_url: str | None = None
+
+    # --- API / webhook (Phase 6+) ---
+    api_host: str = "0.0.0.0"
+    api_port: int = 8000
+    autofix_label: str = "autofix"  # the issue label that triggers a job
 
     # --- GitHub App (Phase 5+) ---
     github_app_id: str | None = None

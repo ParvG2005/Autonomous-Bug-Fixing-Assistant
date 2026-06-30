@@ -38,7 +38,16 @@ Design docs live in [`docs/`](docs/README.md). Build order is in
   **draft** PR, and posts the reasoning as a comment; a Phase 4 → bundle bridge
   (`app.vcs.bundle`) and the `bugfix-pr` CLI. Maps to SECURITY.md **C1** (human gate) and
   **C4** (secret isolation). Real-PR acceptance is marked `integration` + STOP-AND-ASK.
-- ⬜ Phases 6–14: see the build plan.
+- ✅ **Phase 6 — Backend API + data model + webhook**: FastAPI (async) control plane;
+  SQLAlchemy 2.0 async models for repos/jobs/runs/artifacts/fixes/approvals/code-chunks
+  (`app.models`, mirroring DATA_MODEL.md) on portable column types (one schema serves Postgres
+  and the SQLite unit DB); Alembic from day one (`migrations/`, initial migration applies +
+  `alembic check` clean); an async engine/session factory (`app.db.session`); the **HMAC-SHA256
+  webhook verifier** (`app.api.security`, constant-time, secret never logged); and the sole
+  ingestion path (`app.db.jobs.ingest_labeled_issue`) — an `issues.labeled` delivery with the
+  `autofix` label upserts the repo, stores the untrusted issue body as an ARTIFACT, and enqueues
+  one **queued** JOB, **idempotently** (a repeat delivery returns the live job). `bugfix-api` CLI.
+- ⬜ Phases 7–14: see the build plan.
 
 ## Quickstart
 
@@ -129,11 +138,30 @@ anywhere in the client. Opening the first real PR is a **STOP-AND-ASK** gate —
 test (`tests/integration/test_pr_acceptance.py`) only runs with a disposable test repo + App
 credentials in the environment.
 
+### Backend API + webhook
+
+```bash
+# Bring up Postgres (compose) and apply migrations.
+docker compose up -d postgres
+uv run alembic upgrade head
+
+# Serve the control plane (health + GitHub webhook).
+uv run bugfix-api                       # honors API_HOST / API_PORT / DATABASE_URL
+```
+
+Point a GitHub App webhook (issues events, `application/json`, with `GITHUB_WEBHOOK_SECRET`) at
+`POST /webhooks/github`. Each delivery is HMAC-SHA256 verified before its body is trusted; a bad
+signature is a flat 401. Labeling an issue `autofix` enqueues exactly one **queued** job (repeat
+deliveries are idempotent) — the Phase 6 acceptance behavior, covered offline against SQLite in
+`tests/unit/test_webhook.py`. Any other event, action, or label is acknowledged and ignored.
+
 ## Layout
 
 ```
 app/
-  api/        HTTP surface (Phase 6+)
+  api/        HTTP surface — FastAPI app + webhook (Phase 6+)
+  db/         async engine/session + job ingestion service (Phase 6+)
+  models/     SQLAlchemy 2.0 models (Phase 6+)
   agent/      tool-use loop + allowlist (Phase 3+)
   vcs/        GitHub App + draft PR — sole remote-write owner (Phase 5+)
   sandbox/    ephemeral container isolation (Phase 2+)

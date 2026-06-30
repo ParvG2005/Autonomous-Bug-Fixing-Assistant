@@ -20,6 +20,9 @@ build/
 workspaces/
 /tmp-workspaces/
 
+# Local SQLite databases (dev / alembic scratch)
+*.db
+
 # Node / frontend
 node_modules/
 frontend/dist/
