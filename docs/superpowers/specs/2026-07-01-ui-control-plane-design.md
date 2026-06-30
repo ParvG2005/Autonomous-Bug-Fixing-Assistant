@@ -35,8 +35,9 @@ Three additive layers.
 - `Repo.installation_id` → **nullable**. `NULL` = fix-only; non-null =
   publish-capable. This nullable flag *is* the capability signal — no extra
   column. Existing webhook-created repos always set it, so they are unaffected.
-- `Repo.clone_url` → new `String`, nullable. Set for URL-added repos so the
-  cloner can fetch a public repo without the App resolving a clone URL.
+- **No `clone_url` column.** The fix pipeline already derives the clone URL from
+  `full_name` (`app/workers/pipeline.py` builds `https://github.com/{full_name}.git`).
+  URL-add only needs to parse and store `full_name` (`owner/name`).
 - `Repo.gh_repo_id` is currently `unique, index, non-null`. URL-added repos have
   no `gh_repo_id` until connected → make it **nullable** (keep unique index;
   SQLite/Postgres both allow multiple NULLs under a unique index).
