@@ -13,7 +13,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_session, settings_dep
+from app.api.deps import get_queue, get_session, settings_dep
 from app.api.security import EVENT_HEADER, SIGNATURE_HEADER, verify_signature
 from app.core.settings import Settings
 from app.db.jobs import IssueRef, ingest_labeled_issue
@@ -53,6 +53,7 @@ async def github_webhook(
     request: Request,
     settings: Settings = Depends(settings_dep),
     session: AsyncSession = Depends(get_session),
+    queue: object | None = Depends(get_queue),
     x_github_event: str | None = Header(default=None, alias=EVENT_HEADER),
     x_hub_signature_256: str | None = Header(default=None, alias=SIGNATURE_HEADER),
 ) -> dict[str, Any]:
@@ -81,6 +82,14 @@ async def github_webhook(
         repo=ref.full_name,
         issue=ref.gh_issue_number,
     )
+    # Fire-and-forget: commit so the worker sees the row, then enqueue. Enqueue is
+    # deduped by job id, so a duplicate delivery (created=False) is safe to push too.
+    if queue is not None:
+        from app.workers.queue import JobQueue
+
+        await session.commit()
+        if isinstance(queue, JobQueue):
+            await queue.enqueue(result.job.id)
     return {
         "status": "queued" if result.created else "exists",
         "job_id": str(result.job.id),

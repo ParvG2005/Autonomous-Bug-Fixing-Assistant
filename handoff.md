@@ -3,7 +3,51 @@
 > Running progress log. Update this at the end of every working session: what got done, what's
 > left, and anything the next session needs to know. Most recent entry on top.
 
-## Current status: PHASES 0–6 COMPLETE — webhook → queued job, persisted
+## Current status: PHASES 0–7 COMPLETE — fire-and-forget workers, pollable, crash-recoverable
+
+Phase 7 (Async workers) drains the queue and drives the lifecycle:
+
+- `app/workers/state.py` — the **job state machine**. `ALLOWED_TRANSITIONS` is the single source of
+  truth (`queued → running → awaiting_approval → approved → done`, plus `failed`; `running → queued`
+  for recovery; `awaiting_approval → rejected`). `transition(job, to, reason=…)` refuses illegal
+  moves (`InvalidTransition`) and records/clears `failure_reason`. `LIVE_STATES`/`TERMINAL_STATES`.
+- `app/workers/queue.py` — `JobQueue` over an arq Redis pool; `enqueue` is **deduped by job id**
+  (`_job_id="job:<uuid>"`, so a duplicate webhook or a re-enqueue collapses to one task).
+  `create_job_queue` returns `None` when `redis_url` is unset → callers skip enqueuing (offline).
+- `app/workers/pipeline.py` — `run_pipeline(db, job_id, …)`: claims a **queued** job (`→ running`,
+  durable so a crash is visible), clones into an **isolated per-job workspace**
+  (`workspace_root/<job_id>`, re-entrant — wiped + re-cloned on replay), runs Phase 4 `solve_issue`
+  in the sandbox (off the event loop via `asyncio.to_thread`), persists RUN (localize/fix/verify) +
+  diff/reasoning ARTIFACT + FIX rows + `job.cost`, then routes: resolved → **awaiting_approval**
+  (human gate, never auto-published — C1); unresolved/any error → **failed** (reason recorded, no
+  tight retry). Every seam (model client, clone, sandbox, `solve`) is injected → fully offline.
+- `app/workers/recovery.py` — `recover_stuck_jobs`: on worker startup, resets `running` jobs to
+  `queued` (legal edge) and returns ids to re-enqueue. Idempotent. **This is the crash-recovery.**
+- `app/workers/worker.py` — arq `WorkerSettings` (`run_job` task, `on_startup` = configure + open
+  DB/queue + recovery sweep + re-enqueue, `on_shutdown` = close, `max_jobs=4`, `job_timeout=1800`).
+  `bugfix-worker` console script; or `arq app.workers.worker.WorkerSettings`.
+- `app/api/jobs.py` — read-only `GET /jobs`, `GET /jobs/{id}` (state + cost + per-phase runs + fix
+  summary), `GET /jobs/{id}/logs` (**SSE** — replays `LOG` artifacts then tails, closes at terminal
+  / awaiting_approval; tracks seen ids so ties in second-granular `created_at` never dup/drop).
+- Wiring: `app/api/main.py` lifespan opens/closes the queue; the **webhook now enqueues** after
+  ingest (commits first so the worker sees the row; enqueue is a no-op when no queue). Progress is
+  persisted as coarse `LOG` artifacts (`app/workers/progress.py`) so status reads need no Redis.
+
+Acceptance (Phase 7): fire-and-forget (webhook enqueues; worker drains), pollable status
+(`/jobs/{id}` + SSE logs), recoverable on crash (`recover_stuck_jobs`). Covered **offline** —
+`tests/unit/test_worker_{state,recovery,pipeline}.py` + `test_api_jobs.py` (pipeline runs the real
+LocalSandbox + a scripted client end to end to the human gate; unresolved/clone-error → failed;
+non-queued replay is skipped). Whole suite: **160 passed, 1 skipped** offline; ruff + format + mypy
+clean; `alembic check` drift-free (Phase 7 added no schema). New dep: `arq>=0.26` (pulls redis).
+
+**Next session:** Phase 8 (JS/TS + Go adapters) — generalize detect/runner/trace beyond pytest.
+The APPROVAL store can still migrate from the JSON file onto the `approval` table behind the same
+`ApprovalStore` protocol; the worker's human-gate hand-off (`awaiting_approval`) is the natural
+place to wire approve/reject endpoints + the Phase 5 publish path (the only remaining remote write).
+
+---
+
+## Earlier: PHASES 0–6 COMPLETE — webhook → queued job, persisted
 
 Phase 6 (Backend API + data model + webhook) lands the trusted control plane:
 
@@ -245,7 +289,8 @@ acceptance tests are in `docs/BUILD_PLAN.md`. Phases not started:
       guardrails.py / writeup.py / solve.py + `bugfix-agent solve`; acceptance verified on real API)
 - [x] Phase 5 — GitHub integration, human-gated draft PR ⭐
 - [x] Phase 6 — FastAPI + Postgres/Alembic + webhook
-- [ ] Phase 7 — arq workers + state machine
+- [x] Phase 7 — arq workers + state machine (queue dedup, pipeline → human gate, crash recovery,
+      `/jobs` status + SSE logs; `bugfix-worker`; 160 passed offline)
 - [ ] Phase 8 — JS/TS + Go adapters
 - [ ] Phase 9 — security hardening + red-team suite ⭐
 - [ ] Phase 10 — observability + cost (structlog, Langfuse, metrics)
@@ -276,4 +321,5 @@ Start Phase 0 scaffold (no external access needed) so Phase 1 can begin the mome
 land. Phase 1's repo-brain CLI is also buildable + testable without Docker or an API key.
 
 ---
-_Last updated: 2026-06-30 — Phase 6 complete (webhook → queued job, persisted)._
+_Last updated: 2026-06-30 — Phase 7 complete (async workers: queue, state machine, pipeline → human
+gate, crash recovery, /jobs status + SSE logs)._

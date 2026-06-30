@@ -12,20 +12,25 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.api.jobs import router as jobs_router
 from app.api.webhooks import router as webhooks_router
 from app.core.settings import Settings, get_settings
 from app.db.session import Database
 from app.telemetry.logging import configure_logging
+from app.workers.queue import create_job_queue
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Open the database on startup, dispose it on shutdown."""
+    """Open the database (and job queue) on startup, dispose them on shutdown."""
     settings: Settings = app.state.settings
     app.state.db = Database.from_settings(settings)
+    app.state.queue = await create_job_queue(settings)
     try:
         yield
     finally:
+        if app.state.queue is not None:
+            await app.state.queue.close()
         await app.state.db.dispose()
 
 
@@ -42,6 +47,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(webhooks_router)
+    app.include_router(jobs_router)
     return app
 
 

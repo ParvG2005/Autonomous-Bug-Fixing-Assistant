@@ -47,7 +47,16 @@ Design docs live in [`docs/`](docs/README.md). Build order is in
   ingestion path (`app.db.jobs.ingest_labeled_issue`) — an `issues.labeled` delivery with the
   `autofix` label upserts the repo, stores the untrusted issue body as an ARTIFACT, and enqueues
   one **queued** JOB, **idempotently** (a repeat delivery returns the live job). `bugfix-api` CLI.
-- ⬜ Phases 7–14: see the build plan.
+- ✅ **Phase 7 — Async workers**: Redis + arq fire-and-forget queue (`app.workers.queue`, enqueues
+  **deduped by job id**); a **job state machine** (`app.workers.state`, `queued → running →
+  awaiting_approval → approved → done`, plus `failed`/`rejected`) that refuses illegal moves; the
+  **pipeline** (`app.workers.pipeline`) that clones into one **isolated per-job workspace**, runs
+  the Phase 4 reproduce→fix→verify inside the sandbox, persists RUN/FIX/ARTIFACT rows + cost, and
+  routes a verified fix to the **human gate** (`awaiting_approval` — never auto-published, C1);
+  **crash recovery** (`app.workers.recovery`) sweeps `running` jobs back to `queued` on worker
+  startup; and read-only status/SSE-log endpoints (`GET /jobs`, `/jobs/{id}`, `/jobs/{id}/logs`).
+  `bugfix-worker` CLI (also `arq app.workers.worker.WorkerSettings`).
+- ⬜ Phases 8–14: see the build plan.
 
 ## Quickstart
 

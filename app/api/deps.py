@@ -30,3 +30,8 @@ def settings_dep(request: Request) -> Settings:
     """The settings bound to this app instance (injectable in tests)."""
     settings: Settings = request.app.state.settings
     return settings
+
+
+def get_queue(request: Request) -> object | None:
+    """The arq job queue, or ``None`` when Redis is not configured (tests)."""
+    return getattr(request.app.state, "queue", None)
