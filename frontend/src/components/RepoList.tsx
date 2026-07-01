@@ -62,7 +62,7 @@ export function RepoList() {
         <input
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://github.com/owner/name"
+          placeholder="https://github.com/owner/name, a git URL, or local path"
           className="flex-1 rounded border border-slate-300 px-3 py-1 text-sm"
         />
         <button

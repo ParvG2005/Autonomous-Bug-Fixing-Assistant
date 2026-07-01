@@ -13,6 +13,8 @@ export function NewFixModal({
   const [repoId, setRepoId] = useState("");
   const [body, setBody] = useState("");
   const [title, setTitle] = useState("");
+  const [ref, setRef] = useState("");
+  const [prNumber, setPrNumber] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -28,7 +30,12 @@ export function NewFixModal({
       return;
     }
     try {
-      onCreated(await createJob(repoId, body, title));
+      onCreated(
+        await createJob(repoId, body, title, {
+          ref: ref || undefined,
+          prNumber: prNumber ? Number(prNumber) : undefined,
+        }),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "submit failed");
     }
@@ -61,6 +68,19 @@ export function NewFixModal({
           placeholder="issue text or stack trace"
           rows={8}
           className="mb-2 w-full rounded border border-slate-300 px-2 py-1 font-mono text-xs"
+        />
+        <input
+          value={ref}
+          onChange={(e) => setRef(e.target.value)}
+          placeholder="branch / tag / sha (optional)"
+          className="mb-2 w-full rounded border border-slate-300 px-2 py-1 text-sm"
+        />
+        <input
+          type="number"
+          value={prNumber}
+          onChange={(e) => setPrNumber(e.target.value)}
+          placeholder="PR # (GitHub only, optional)"
+          className="mb-2 w-full rounded border border-slate-300 px-2 py-1 text-sm"
         />
         {error && <p className="mb-2 text-sm text-rose-700">{error}</p>}
         <div className="flex justify-end gap-2">

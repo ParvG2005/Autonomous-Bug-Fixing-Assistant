@@ -87,4 +87,17 @@ describe("api client", () => {
     expect(init.method).toBe("POST");
     expect(JSON.parse(init.body)).toEqual({ repo_id: "repo1", body: "steps to repro", title: "Bug title" });
   });
+
+  it("createJob posts ref and pr_number when opts are given", async () => {
+    const fetchMock = mockFetch({ id: "j1", state: "queued" });
+    await createJob("repo1", "steps to repro", "Bug title", { ref: "feature/x", prNumber: 12 });
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(init.body)).toEqual({
+      repo_id: "repo1",
+      body: "steps to repro",
+      title: "Bug title",
+      ref: "feature/x",
+      pr_number: 12,
+    });
+  });
 });
