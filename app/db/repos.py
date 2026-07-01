@@ -16,8 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.entities import Job, Repo
 from app.workers.state import LIVE_STATES
 
-_URL_RE = re.compile(r"github\.com[:/]+([\w.-]+)/([\w.-]+?)(?:\.git)?/?$")
+_GH_URL_RE = re.compile(r"github\.com[:/]+([\w.-]+)/([\w.-]+?)(?:\.git)?/?$")
 _SHORT_RE = re.compile(r"^([\w.-]+)/([\w.-]+?)(?:\.git)?$")
+# owner/name from any "host[:/]owner/name(.git)" remote (gitlab, bitbucket, self-hosted).
+_ANY_REMOTE_RE = re.compile(r"[:/]([\w.-]+)/([\w.-]+?)(?:\.git)?/?$")
 
 
 def repo_clone_url(repo: Repo) -> str:
@@ -25,15 +27,39 @@ def repo_clone_url(repo: Repo) -> str:
     return repo.source_url or f"https://github.com/{repo.full_name}.git"
 
 
-def parse_repo_url(url: str) -> str:
-    """Return ``owner/name`` from a GitHub URL or shorthand; raise on anything else."""
+def parse_repo_url(url: str) -> tuple[str, str | None]:
+    """Classify a repo reference.
+
+    Returns ``(full_name, source_url)``. ``source_url`` is ``None`` for
+    GitHub-cloud inputs (clone URL is derived from ``full_name``); otherwise it
+    is the literal git URL or local path to clone from.
+    """
     url = (url or "").strip()
     if not url:
         raise ValueError("empty repo url")
-    m = _URL_RE.search(url) or (_SHORT_RE.match(url) if "github.com" not in url else None)
+
+    # GitHub cloud: store only full_name, derive the URL later.
+    if "github.com" in url:
+        m = _GH_URL_RE.search(url)
+        if m is None:
+            raise ValueError(f"not a GitHub repo url: {url!r}")
+        return f"{m.group(1)}/{m.group(2)}", None
+    m = _SHORT_RE.match(url)
+    if m is not None:
+        return f"{m.group(1)}/{m.group(2)}", None
+
+    # Local path: full_name is the basename; source is the literal path/url.
+    if url.startswith(("/", "./", "../", "~", "file://")):
+        name = url.rstrip("/").split("/")[-1] or "repo"
+        if name.endswith(".git"):
+            name = name[:-4]
+        return name, url
+
+    # Any other git remote (gitlab, bitbucket, self-hosted, ssh).
+    m = _ANY_REMOTE_RE.search(url)
     if m is None:
-        raise ValueError(f"not a GitHub repo url: {url!r}")
-    return f"{m.group(1)}/{m.group(2)}"
+        raise ValueError(f"not a recognizable repo url or path: {url!r}")
+    return f"{m.group(1)}/{m.group(2)}", url
 
 
 async def _by_full_name(session: AsyncSession, full_name: str) -> Repo | None:
@@ -42,10 +68,12 @@ async def _by_full_name(session: AsyncSession, full_name: str) -> Repo | None:
     ).scalar_one_or_none()
 
 
-async def create_repo(session: AsyncSession, full_name: str) -> Repo:
+async def create_repo(
+    session: AsyncSession, full_name: str, source_url: str | None = None
+) -> Repo:
     if await _by_full_name(session, full_name) is not None:
         raise ValueError(f"repo {full_name} already registered")
-    repo = Repo(full_name=full_name, default_branch="main")
+    repo = Repo(full_name=full_name, default_branch="main", source_url=source_url)
     session.add(repo)
     await session.flush()
     return repo

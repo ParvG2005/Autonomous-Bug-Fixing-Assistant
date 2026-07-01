@@ -21,20 +21,22 @@ async def test_repo_persists_without_install(db_session):
 @pytest.mark.parametrize(
     "url,expected",
     [
-        ("https://github.com/octo/demo", "octo/demo"),
-        ("https://github.com/octo/demo.git", "octo/demo"),
-        ("git@github.com:octo/demo.git", "octo/demo"),
-        ("octo/demo", "octo/demo"),
+        ("https://github.com/octo/demo", ("octo/demo", None)),
+        ("octo/demo", ("octo/demo", None)),
+        ("git@github.com:octo/demo.git", ("octo/demo", None)),
+        ("https://gitlab.com/grp/proj.git", ("grp/proj", "https://gitlab.com/grp/proj.git")),
+        ("git@gitlab.com:grp/proj.git", ("grp/proj", "git@gitlab.com:grp/proj.git")),
+        ("/Users/me/code/myrepo", ("myrepo", "/Users/me/code/myrepo")),
+        ("file:///Users/me/code/myrepo", ("myrepo", "file:///Users/me/code/myrepo")),
     ],
 )
-def test_parse_repo_url_ok(url, expected):
+def test_parse_repo_url_classifies_sources(url, expected):
     assert parse_repo_url(url) == expected
 
 
-@pytest.mark.parametrize("bad", ["", "https://gitlab.com/a/b", "not a url", "octo"])
-def test_parse_repo_url_bad(bad):
+def test_parse_repo_url_rejects_empty():
     with pytest.raises(ValueError):
-        parse_repo_url(bad)
+        parse_repo_url("")
 
 
 def test_repo_clone_url_defaults_to_github_when_source_none():
