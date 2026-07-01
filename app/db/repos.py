@@ -71,9 +71,7 @@ async def _by_full_name(session: AsyncSession, full_name: str) -> Repo | None:
     ).scalar_one_or_none()
 
 
-async def create_repo(
-    session: AsyncSession, full_name: str, source_url: str | None = None
-) -> Repo:
+async def create_repo(session: AsyncSession, full_name: str, source_url: str | None = None) -> Repo:
     if await _by_full_name(session, full_name) is not None:
         raise ValueError(f"repo {full_name} already registered")
     repo = Repo(full_name=full_name, default_branch="main", source_url=source_url)

@@ -112,7 +112,5 @@ async def test_add_repo_stores_source_url_for_gitlab(
     assert body["full_name"] == "grp/proj"
 
     async with db.session() as s:
-        repo = (
-            await s.execute(select(Repo).where(Repo.full_name == "grp/proj"))
-        ).scalar_one()
+        repo = (await s.execute(select(Repo).where(Repo.full_name == "grp/proj"))).scalar_one()
         assert repo.source_url == "https://gitlab.com/grp/proj.git"

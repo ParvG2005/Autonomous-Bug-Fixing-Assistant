@@ -89,9 +89,7 @@ async def test_create_job_malformed_repo_id(api_client: httpx.AsyncClient) -> No
     assert r.status_code == 400
 
 
-async def test_create_job_persists_ref_and_pr(
-    api_client: httpx.AsyncClient, db: Database
-) -> None:
+async def test_create_job_persists_ref_and_pr(api_client: httpx.AsyncClient, db: Database) -> None:
     r = await api_client.post("/repos", json={"clone_url": "octo/demo"})
     rid = r.json()["id"]
 
@@ -107,8 +105,6 @@ async def test_create_job_persists_ref_and_pr(
     from app.models.entities import Job
 
     async with db.session() as session:
-        job = (
-            await session.execute(select(Job).where(Job.id == uuid.UUID(job_id)))
-        ).scalar_one()
+        job = (await session.execute(select(Job).where(Job.id == uuid.UUID(job_id)))).scalar_one()
         assert job.ref == "feature/x"
         assert job.pr_number == 12
