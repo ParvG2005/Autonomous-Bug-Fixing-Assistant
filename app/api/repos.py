@@ -56,8 +56,8 @@ async def get_repos(session: AsyncSession = Depends(get_session)) -> list[RepoVi
 @router.post("", response_model=RepoView, status_code=status.HTTP_201_CREATED)
 async def add_repo(body: AddRepoBody, session: AsyncSession = Depends(get_session)) -> RepoView:
     try:
-        full_name = parse_repo_url(body.clone_url)
-        repo = await create_repo(session, full_name)
+        full_name, source_url = parse_repo_url(body.clone_url)
+        repo = await create_repo(session, full_name, source_url=source_url)
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     await session.commit()

@@ -15,6 +15,7 @@ from typing import Any
 
 from sqlalchemy import select
 
+from app.db.repos import repo_clone_url
 from app.discovery.service import run_scan
 from app.discovery.sources import DEFAULT_DETECTORS
 from app.index.clone import clone_repo
@@ -74,8 +75,9 @@ async def scan_repo(ctx: dict[str, Any], repo_id: str) -> str:
         if repo is None:
             return "unavailable"
         full_name = repo.full_name
+        clone_url = repo_clone_url(repo)
     workspace = (settings.workspace_root / f"scan-{repo_id}").resolve()
-    await asyncio.to_thread(clone_repo, f"https://github.com/{full_name}.git", workspace, depth=1)
+    await asyncio.to_thread(clone_repo, clone_url, workspace, depth=1)
     await run_scan(
         db,
         full_name,

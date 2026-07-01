@@ -33,6 +33,7 @@ from app.agent.loop import CreateMessage
 from app.agent.models import AgentBudget
 from app.agent.solve import SolveResult, solve_issue
 from app.core.settings import Settings
+from app.db.repos import repo_clone_url
 from app.db.session import Database
 from app.index.clone import clone_repo
 from app.models.entities import (
@@ -117,7 +118,7 @@ async def _start(db: Database, job_id: str) -> tuple[RepoInfo, str, str | None, 
         repo_info = RepoInfo(
             full_name=repo.full_name,
             default_branch=repo.default_branch,
-            clone_url=f"https://github.com/{repo.full_name}.git",
+            clone_url=repo_clone_url(repo),
         )
 
         body = ""

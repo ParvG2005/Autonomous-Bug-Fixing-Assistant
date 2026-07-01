@@ -33,7 +33,9 @@ async def fake_pool() -> _FakePool:
 
 
 @pytest.fixture
-async def api_client(tmp_path: Path, fake_pool: _FakePool) -> AsyncIterator[httpx.AsyncClient]:
+async def api_db(
+    tmp_path: Path, fake_pool: _FakePool
+) -> AsyncIterator[tuple[httpx.AsyncClient, Database]]:
     settings = Settings(
         app_env="ci",
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'repos.db'}",
@@ -46,9 +48,14 @@ async def api_client(tmp_path: Path, fake_pool: _FakePool) -> AsyncIterator[http
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         try:
-            yield c
+            yield c, db
         finally:
             await db.dispose()
+
+
+@pytest.fixture
+async def api_client(api_db: tuple[httpx.AsyncClient, Database]) -> httpx.AsyncClient:
+    return api_db[0]
 
 
 async def test_add_list_delete_repo(api_client: httpx.AsyncClient) -> None:
@@ -89,3 +96,23 @@ async def test_connect_enqueues(api_client: httpx.AsyncClient, fake_pool: _FakeP
     r = await api_client.post(f"/repos/{rid}/connect")
     assert r.status_code == 202
     assert ("connect_repo", (rid,), f"connect_repo:{rid}") in fake_pool.calls
+
+
+async def test_add_repo_stores_source_url_for_gitlab(
+    api_db: tuple[httpx.AsyncClient, Database],
+) -> None:
+    from sqlalchemy import select
+
+    from app.models.entities import Repo
+
+    api_client, db = api_db
+    r = await api_client.post("/repos", json={"clone_url": "https://gitlab.com/grp/proj.git"})
+    assert r.status_code == 201
+    body = r.json()
+    assert body["full_name"] == "grp/proj"
+
+    async with db.session() as s:
+        repo = (
+            await s.execute(select(Repo).where(Repo.full_name == "grp/proj"))
+        ).scalar_one()
+        assert repo.source_url == "https://gitlab.com/grp/proj.git"

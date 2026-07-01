@@ -104,6 +104,37 @@ async def test_scan_repo_clones_and_scans(db, monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_scan_repo_clones_from_source_url(db, monkeypatch, tmp_path):
+    async with db.session() as s:
+        repo = await create_repo(s, "grp/proj", source_url="https://gitlab.com/grp/proj.git")
+        await s.commit()
+        rid = str(repo.id)
+
+    calls = {}
+
+    def fake_clone(url, dest, **kw):
+        calls["clone"] = (url, dest)
+        return dest
+
+    async def fake_run_scan(database, full_name, workspace, **kw):
+        calls["scan"] = (full_name, kw.get("promote"))
+        from app.discovery.service import ScanSummary
+
+        return ScanSummary(
+            scan_id="s1", sources_run=[], candidates=0, parked=0, duplicates=0, errors={}
+        )
+
+    monkeypatch.setattr(control_tasks, "clone_repo", fake_clone)
+    monkeypatch.setattr(control_tasks, "run_scan", fake_run_scan)
+    monkeypatch.setattr(control_tasks, "get_sandbox", lambda: object())
+
+    ctx = {"db": db, "settings": get_settings()}
+    result = await control_tasks.scan_repo(ctx, rid)
+    assert result == "scanned"
+    assert calls["clone"][0] == "https://gitlab.com/grp/proj.git"
+
+
+@pytest.mark.asyncio
 async def test_publish_pr_opens_draft(db, monkeypatch):
     # Build a repo (with install), a job, an approved decision, and a BUNDLE artifact.
     import json
