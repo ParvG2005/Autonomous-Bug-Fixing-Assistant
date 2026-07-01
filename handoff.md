@@ -3,6 +3,36 @@
 > Running progress log. Update this at the end of every working session: what got done, what's
 > left, and anything the next session needs to know. Most recent entry on top.
 
+## Session note — 2026-07-01: connect-repo + agent-loop fixes (on `main`)
+
+Live-debugging `ParvG2005/Workflow` through the UI surfaced four fixes, all shipped to `main`:
+
+- **`fedc90f`** — `parse_repo_url` now accepts GitHub web-UI URLs (`/tree/<ref>`, `/blob/…`,
+  `/pull/N`, `/commit/<sha>`) instead of rejecting them ("not a GitHub repo url"). Suffix stripped;
+  branch/PR stays a separate per-job `ref`. Also fixed `resolve_repo_installation`: it authed
+  `GET /repos/{full_name}` with the **App JWT** → HTTP 401 (JWT only valid on app-level endpoints).
+  Reordered: resolve installation via JWT → mint installation token → repo lookup **with the token**.
+  Plus made `test_mint_requires_configured_credentials` hermetic (`_env_file=None`) so a populated
+  local `.env` can't leak real creds into unit tests.
+- **`5f4d74f`** — `bootstrap.py` ran `asyncio.run()` inside `run_bootstrap`'s live event loop
+  ("cannot be called from a running event loop"); now runs the identity fetch on a worker thread.
+  `dev:bootstrap` dropped `--scrape` so `npm run dev` resets the DB without auto-scraping.
+- **`d6bbdee`** — agent loop treated any `stop_reason != "tool_use"` as `COMPLETED`, so a model that
+  narrated its plan ("the plan has already been fully executed") without calling `edit_file` stopped
+  at iteration 1 with an empty diff / UNRESOLVED, budget unused. Now: end-turn with **zero edits** →
+  nudge to actually use the tools, bounded by `_MAX_CONTINUE_NUDGES = 2`. Verify gate had correctly
+  refused to publish the empty fix — safety held; this stops the wasted run.
+
+**Known-open (not bugs, design calls):** (1) proactive discovery scans the repo **default branch**
+only (`main`), so it never targets `autofix-test` where the real issues live — discovery-promoted
+jobs carry no `ref`. Use the manual "New Fix" path with `ref=autofix-test` to fix those. (2) The
+service publish path is GitHub-App-only (no PAT fallback); a `.pem` in `.env` must be a multiline
+double-quoted value. GitHub App `blah-blah-test` (app id `4184497`) is installed on `ParvG2005`
+(installation `143570572`, selected repos incl. `Workflow`) and verified end-to-end.
+
+**Reminder:** long-lived `bugfix-worker`/`bugfix-api` cache settings + code — restart to pick up
+`.env` or code changes.
+
 ## Current status: PHASES 0–14 COMPLETE — proactive discovery + one-command dev + many languages
 
 This session built the two optional post-12 phases and broadened the language coverage.
