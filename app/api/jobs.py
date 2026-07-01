@@ -171,6 +171,8 @@ class CreateJobBody(BaseModel):
     repo_id: str
     body: str
     title: str | None = None
+    ref: str | None = None
+    pr_number: int | None = None
 
 
 @router.post("/jobs", response_model=JobView, status_code=status.HTTP_201_CREATED)
@@ -193,6 +195,8 @@ async def create_job(
             repo_id=_parse_job_id(payload.repo_id),
             body=payload.body,
             title=payload.title,
+            ref=payload.ref,
+            pr_number=payload.pr_number,
         )
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
