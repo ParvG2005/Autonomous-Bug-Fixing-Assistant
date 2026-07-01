@@ -65,6 +65,7 @@ class RepoInfo:
     full_name: str
     default_branch: str
     clone_url: str
+    ref: str | None = None
 
 
 class PrepareWorkspace(Protocol):
@@ -78,7 +79,7 @@ SolveFn = Callable[..., SolveResult]
 
 
 def _default_prepare_workspace(repo: RepoInfo, dest: Path) -> Path:
-    return clone_repo(repo.clone_url, dest, depth=1, ref=repo.default_branch)
+    return clone_repo(repo.clone_url, dest, depth=1, ref=repo.ref or repo.default_branch)
 
 
 def _is_new_test_file(path: str) -> bool:
@@ -119,6 +120,7 @@ async def _start(db: Database, job_id: str) -> tuple[RepoInfo, str, str | None, 
             full_name=repo.full_name,
             default_branch=repo.default_branch,
             clone_url=repo_clone_url(repo),
+            ref=job.ref,
         )
 
         body = ""

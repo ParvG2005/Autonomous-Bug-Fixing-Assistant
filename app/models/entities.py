@@ -162,6 +162,9 @@ class Job(Base):
     trigger: Mapped[JobTrigger] = enum_column(JobTrigger, default=JobTrigger.WEBHOOK)
     issue_title: Mapped[str | None] = mapped_column(Text, nullable=True)
     issue_body_ref: Mapped[uuid.UUID | None] = mapped_column(nullable=True)  # ARTIFACT id
+    # Optional git ref (branch / tag / sha) to check out instead of the repo's
+    # default branch. NULL = default branch (webhook / legacy jobs).
+    ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
     state: Mapped[JobState] = enum_column(JobState, default=JobState.QUEUED)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     budget: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
