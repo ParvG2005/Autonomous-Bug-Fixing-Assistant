@@ -16,7 +16,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.entities import Job, Repo
 from app.workers.state import LIVE_STATES
 
-_GH_URL_RE = re.compile(r"github\.com[:/]+([\w.-]+)/([\w.-]+?)(?:\.git)?/?$")
+# owner/repo, optionally followed by a GitHub web-UI path (/tree/<ref>,
+# /blob/<ref>/..., /pull/<n>, /commit/<sha>) that a browser leaves on the URL.
+# That suffix is not part of the repo identity — a branch/PR is a separate
+# per-job `ref` input — so we match owner/repo and discard the rest.
+_GH_URL_RE = re.compile(
+    r"github\.com[:/]+([\w.-]+)/([\w.-]+?)(?:\.git)?(?:/(?:tree|blob|commit|pull|compare|releases)(?:/.*)?)?/?$"
+)
 _SHORT_RE = re.compile(r"^([\w.-]+)/([\w.-]+?)(?:\.git)?$")
 # owner/name from any "host[:/]owner/name(.git)" remote (gitlab, bitbucket, self-hosted).
 _ANY_REMOTE_RE = re.compile(r"[:/]([\w.-]+)/([\w.-]+?)(?:\.git)?/?$")

@@ -74,8 +74,10 @@ def test_mint_installation_token_posts_jwt_and_returns_token() -> None:
 
 
 def test_mint_requires_configured_credentials() -> None:
+    # _env_file=None keeps this hermetic — a developer's real .env creds must not
+    # leak in and turn "unconfigured" into a live (failing) token exchange.
     with pytest.raises(GitHubAuthError, match="not configured"):
-        mint_installation_token(Settings(), 1, now=_NOW)
+        mint_installation_token(Settings(_env_file=None), 1, now=_NOW)
 
 
 def test_mint_raises_on_non_201_without_leaking_body() -> None:
@@ -100,6 +102,10 @@ def test_resolve_repo_installation_returns_ids() -> None:
         captured.append(url)
         if url.endswith("/installation"):
             return httpx.Response(200, json={"id": 67890})
+        if url.endswith("/access_tokens"):
+            return httpx.Response(
+                201, json={"token": "ghs_minted", "expires_at": "2026-06-30T01:00:00Z"}
+            )
         return httpx.Response(200, json={"id": 12345})
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
@@ -111,6 +117,39 @@ def test_resolve_repo_installation_returns_ids() -> None:
     assert installation_id == 67890
     assert any(u.endswith("/repos/octo/demo") for u in captured)
     assert any(u.endswith("/repos/octo/demo/installation") for u in captured)
+
+
+def test_resolve_repo_lookup_uses_installation_token_not_app_jwt() -> None:
+    """Regression: ``GET /repos/{full_name}`` rejects the App JWT (HTTP 401).
+
+    The installation endpoint accepts the JWT, but the plain repo lookup needs
+    an installation access token. This handler mimics GitHub: it 401s the repo
+    lookup unless it carries ``Authorization: token ...``.
+    """
+    private_pem, _ = _rsa_pem()
+    settings = Settings(github_app_id="42", github_app_private_key=SecretStr(private_pem))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        auth = request.headers.get("Authorization", "")
+        if url.endswith("/installation"):
+            return httpx.Response(200, json={"id": 67890})
+        if url.endswith("/access_tokens"):
+            return httpx.Response(
+                201, json={"token": "ghs_minted", "expires_at": "2026-06-30T01:00:00Z"}
+            )
+        if url.endswith("/repos/octo/demo"):
+            if auth.startswith("token "):
+                return httpx.Response(200, json={"id": 12345})
+            return httpx.Response(401, json={"message": "Bad credentials"})
+        return httpx.Response(404)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    gh_repo_id, installation_id = resolve_repo_installation(
+        settings, "octo/demo", now=_NOW, http=client
+    )
+    assert gh_repo_id == 12345
+    assert installation_id == 67890
 
 
 def test_resolve_repo_installation_raises_on_non_200_without_leaking_body() -> None:

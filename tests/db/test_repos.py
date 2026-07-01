@@ -22,6 +22,13 @@ async def test_repo_persists_without_install(db_session):
     "url,expected",
     [
         ("https://github.com/octo/demo", ("octo/demo", None)),
+        # GitHub web UI URLs: the /tree, /blob, /pull, /commit suffix is a
+        # browser artifact — strip it, extract owner/repo. (The branch/PR is a
+        # separate per-job `ref` input, not part of the repo identity.)
+        ("https://github.com/octo/demo/tree/some-branch", ("octo/demo", None)),
+        ("https://github.com/octo/demo/tree/feature/nested-slash", ("octo/demo", None)),
+        ("https://github.com/octo/demo/blob/main/src/x.py", ("octo/demo", None)),
+        ("https://github.com/octo/demo/pull/42", ("octo/demo", None)),
         ("octo/demo", ("octo/demo", None)),
         ("git@github.com:octo/demo.git", ("octo/demo", None)),
         ("https://gitlab.com/grp/proj.git", ("grp/proj", "https://gitlab.com/grp/proj.git")),

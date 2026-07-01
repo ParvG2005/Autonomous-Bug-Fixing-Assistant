@@ -111,10 +111,12 @@ def resolve_repo_installation(
 ) -> tuple[int, int]:
     """Resolve ``(gh_repo_id, installation_id)`` for ``full_name`` via the GitHub App.
 
-    Mints an App JWT and calls ``GET /repos/{full_name}`` for the repo id, then
-    ``GET /repos/{full_name}/installation`` for the installation id. Raises
-    :class:`GitHubAuthError` if credentials are unconfigured or either call does
-    not return 200; response bodies are never echoed (they may contain the JWT).
+    Calls ``GET /repos/{full_name}/installation`` (which accepts the App JWT) for
+    the installation id, mints an installation access token, then calls
+    ``GET /repos/{full_name}`` **with that token** for the repo id. The plain repo
+    endpoint rejects an App JWT (HTTP 401), so the token step is required. Raises
+    :class:`GitHubAuthError` if credentials are unconfigured or a call does not
+    return 200; response bodies are never echoed (they may contain the JWT).
     """
     if settings.github_app_id is None or settings.github_app_private_key is None:
         raise GitHubAuthError("GitHub App credentials are not configured")
@@ -124,7 +126,7 @@ def resolve_repo_installation(
         settings.github_app_private_key.get_secret_value(),
         now=now,
     )
-    headers = {
+    jwt_headers = {
         "Authorization": f"Bearer {app_jwt}",
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
@@ -132,19 +134,31 @@ def resolve_repo_installation(
 
     client = http or httpx.Client(timeout=30.0)
     try:
-        repo_resp = client.get(f"{GITHUB_API}/repos/{full_name}", headers=headers)
-        if repo_resp.status_code != 200:
-            raise GitHubAuthError(
-                f"repo lookup failed for {full_name}: HTTP {repo_resp.status_code}"
-            )
-        gh_repo_id = repo_resp.json()["id"]
-
-        install_resp = client.get(f"{GITHUB_API}/repos/{full_name}/installation", headers=headers)
+        # The installation endpoint accepts the App JWT and yields the id we need
+        # to mint a token. Resolve it first.
+        install_resp = client.get(
+            f"{GITHUB_API}/repos/{full_name}/installation", headers=jwt_headers
+        )
         if install_resp.status_code != 200:
             raise GitHubAuthError(
                 f"installation lookup failed for {full_name}: HTTP {install_resp.status_code}"
             )
         installation_id = install_resp.json()["id"]
+
+        # The plain repo lookup rejects an App JWT (401); it needs an installation
+        # access token scoped to this repo.
+        token = mint_installation_token(settings, installation_id, now=now, http=client)
+        repo_headers = {
+            "Authorization": f"token {token.value}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+        repo_resp = client.get(f"{GITHUB_API}/repos/{full_name}", headers=repo_headers)
+        if repo_resp.status_code != 200:
+            raise GitHubAuthError(
+                f"repo lookup failed for {full_name}: HTTP {repo_resp.status_code}"
+            )
+        gh_repo_id = repo_resp.json()["id"]
     finally:
         if http is None:
             client.close()
