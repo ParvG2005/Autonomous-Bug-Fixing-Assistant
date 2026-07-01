@@ -35,7 +35,7 @@ from app.agent.solve import SolveResult, solve_issue
 from app.core.settings import Settings
 from app.db.repos import repo_clone_url
 from app.db.session import Database
-from app.index.clone import clone_repo
+from app.index.clone import clone_repo, fetch_pr_head
 from app.models.entities import (
     Artifact,
     ArtifactKind,
@@ -66,6 +66,7 @@ class RepoInfo:
     default_branch: str
     clone_url: str
     ref: str | None = None
+    pr_number: int | None = None
 
 
 class PrepareWorkspace(Protocol):
@@ -79,7 +80,10 @@ SolveFn = Callable[..., SolveResult]
 
 
 def _default_prepare_workspace(repo: RepoInfo, dest: Path) -> Path:
-    return clone_repo(repo.clone_url, dest, depth=1, ref=repo.ref or repo.default_branch)
+    workspace = clone_repo(repo.clone_url, dest, depth=1, ref=repo.ref or repo.default_branch)
+    if repo.pr_number is not None:
+        fetch_pr_head(workspace, repo.pr_number)
+    return workspace
 
 
 def _is_new_test_file(path: str) -> bool:
@@ -121,6 +125,7 @@ async def _start(db: Database, job_id: str) -> tuple[RepoInfo, str, str | None, 
             default_branch=repo.default_branch,
             clone_url=repo_clone_url(repo),
             ref=job.ref,
+            pr_number=job.pr_number,
         )
 
         body = ""

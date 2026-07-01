@@ -323,6 +323,23 @@ def test_default_prepare_workspace_falls_back_to_default_branch(monkeypatch, tmp
     assert seen["ref"] == "main"
 
 
+def test_default_prepare_workspace_fetches_pr_head(monkeypatch, tmp_path):
+    calls = {}
+    monkeypatch.setattr(
+        "app.workers.pipeline.clone_repo",
+        lambda source, dest, depth=1, ref=None: dest,
+    )
+    monkeypatch.setattr(
+        "app.workers.pipeline.fetch_pr_head",
+        lambda ws, n, **k: calls.update(pr=n),
+    )
+    repo = RepoInfo(
+        full_name="o/n", default_branch="main", clone_url="https://x/o/n.git", pr_number=7
+    )
+    _default_prepare_workspace(repo, tmp_path / "ws")
+    assert calls["pr"] == 7
+
+
 async def test_pipeline_skips_a_non_queued_job(
     db: Database, failing_project: Path, tmp_path: Path
 ) -> None:

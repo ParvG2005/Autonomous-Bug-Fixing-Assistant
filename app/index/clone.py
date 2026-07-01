@@ -46,3 +46,30 @@ def clone_repo(source: str, dest: Path, *, depth: int = 1, ref: str | None = Non
     if proc.returncode != 0:
         raise RuntimeError(f"git clone failed: {proc.stderr.strip()}")
     return dest
+
+
+def fetch_pr_head(repo_path: Path, pr_number: int, *, remote: str = "origin") -> None:
+    """Fetch and check out a GitHub pull request's head commit.
+
+    GitHub exposes a PR's head as ``refs/pull/<n>/head`` on the origin remote.
+    This is GitHub-specific; other hosts name merge-request refs differently.
+    """
+    if _GIT is None:
+        raise GitNotFound("git is required to fetch a PR but was not found on PATH")
+    ref = f"pull/{pr_number}/head"
+    fetch = subprocess.run(
+        [_GIT, "-C", str(repo_path), "fetch", "--depth", "1", remote, ref],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if fetch.returncode != 0:
+        raise RuntimeError(f"git fetch PR #{pr_number} failed: {fetch.stderr.strip()}")
+    checkout = subprocess.run(
+        [_GIT, "-C", str(repo_path), "checkout", "-q", "FETCH_HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if checkout.returncode != 0:
+        raise RuntimeError(f"git checkout PR #{pr_number} failed: {checkout.stderr.strip()}")
