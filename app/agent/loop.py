@@ -29,6 +29,16 @@ from app.agent.tools import ToolExecutor, tool_schemas
 # A callable with the shape of ``anthropic.Anthropic().messages.create``.
 CreateMessage = Callable[..., Any]
 
+# How many times to push back when the model ends its turn without editing.
+# Small so a model that genuinely has nothing to do still terminates quickly.
+_MAX_CONTINUE_NUDGES = 2
+_CONTINUE_NUDGE = (
+    "You ended your turn without making any edits, but the target test still "
+    "fails. Do not just describe the fix — apply it: use edit_file to change the "
+    "source, then run_tests to verify. If you are certain no source change can "
+    "fix this, say so explicitly and explain why."
+)
+
 
 class AgentLoop:
     """Runs the tool-use loop for one workspace within a budget."""
@@ -118,6 +128,7 @@ class AgentLoop:
         stop = StopReason.MAX_ITERATIONS
         summary = ""
         iterations = 0
+        nudges = 0
 
         while iterations < self.budget.max_iterations:
             if time.monotonic() >= deadline:
@@ -141,6 +152,15 @@ class AgentLoop:
                 # Server-side pause: re-send to let the model resume.
                 continue
             if reason != "tool_use":
+                # The model ended its turn. If it has not edited anything, it
+                # likely narrated a plan instead of executing it (a known failure
+                # mode, worsened by the planning step). Push back and let it act,
+                # bounded by ``_MAX_CONTINUE_NUDGES`` so a model with nothing to
+                # do still terminates.
+                if not self.executor.edits and nudges < _MAX_CONTINUE_NUDGES:
+                    nudges += 1
+                    messages.append({"role": "user", "content": _CONTINUE_NUDGE})
+                    continue
                 stop = StopReason.COMPLETED
                 summary = _text_of(response)
                 break

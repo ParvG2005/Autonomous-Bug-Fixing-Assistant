@@ -108,11 +108,50 @@ def test_loop_fixes_bug_and_verifies(agent_fixable: Path) -> None:
     assert "tools" in client.calls[1]
 
 
+def test_loop_nudges_when_model_narrates_instead_of_editing(agent_fixable: Path) -> None:
+    # Regression: after the planning step, the model may end its turn with pure
+    # text ("the plan has already been executed") without ever calling a tool.
+    # The loop must not accept that empty-diff turn as done — it must nudge the
+    # model to actually edit, then reach a real fix.
+    client = _ScriptedClient(
+        [
+            _Response([_Text("Plan: fix the off-by-one.")], "end_turn"),  # planning
+            _Response([_Text("The plan has already been fully executed.")], "end_turn"),
+            _Response(
+                [
+                    _ToolUse(
+                        "t1",
+                        "edit_file",
+                        {
+                            "path": "mathutil.py",
+                            "old_str": "for i in range(1, n):",
+                            "new_str": "for i in range(1, n + 1):",
+                        },
+                    )
+                ],
+                "tool_use",
+            ),
+            _Response([_Text("Done — fixed the range.")], "end_turn"),
+        ]
+    )
+    loop = _loop(agent_fixable, client)
+
+    result = loop.run("factorial(5) should be 120 but the test fails.")
+
+    assert result.resolved is True
+    assert len(result.edits) == 1
+    assert "range(1, n + 1)" in (agent_fixable / "mathutil.py").read_text()
+
+
 def test_loop_reports_unresolved_when_no_fix(agent_fixable: Path) -> None:
+    # The model never edits; it gets nudged _MAX_CONTINUE_NUDGES times and then
+    # the loop stops as COMPLETED rather than nudging forever.
     client = _ScriptedClient(
         [
             _Response([_Text("plan")], "end_turn"),
             _Response([_Text("I give up.")], "end_turn"),
+            _Response([_Text("Still stuck.")], "end_turn"),
+            _Response([_Text("No fix.")], "end_turn"),
         ]
     )
     loop = _loop(agent_fixable, client)
@@ -122,6 +161,8 @@ def test_loop_reports_unresolved_when_no_fix(agent_fixable: Path) -> None:
     assert result.resolved is False
     assert result.stop_reason is StopReason.COMPLETED
     assert result.edits == []
+    # planning + first working turn + 2 nudged turns
+    assert len(client.calls) == 4
 
 
 def test_loop_respects_iteration_budget(agent_fixable: Path) -> None:
@@ -177,9 +218,12 @@ def test_loop_token_accounting(agent_fixable: Path) -> None:
         [
             _Response([_Text("plan")], "end_turn"),
             _Response([_Text("done")], "end_turn"),
+            _Response([_Text("done")], "end_turn"),
+            _Response([_Text("done")], "end_turn"),
         ]
     )
     loop = _loop(agent_fixable, client)
     result = loop.run("fix it")
-    # Planning turn (150) + one working turn (150) both count toward the budget.
-    assert result.usage.total == 300
+    # Planning turn (150) + one working turn + 2 nudged turns, each 150, all
+    # count toward the budget.
+    assert result.usage.total == 600
