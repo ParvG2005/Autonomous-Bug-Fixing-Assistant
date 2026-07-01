@@ -12,6 +12,7 @@ expiry) and best-effort POSIX resource limits (CPU seconds, address space) via
 
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -48,9 +49,11 @@ class LocalSandbox:
         cmd: list[str],
         workspace: Path,
         limits: ResourceLimits | None = None,
+        env: dict[str, str] | None = None,
     ) -> ExecResult:
         limits = limits or ResourceLimits()
         preexec = self._rlimit_setter(limits)
+        run_env = {**os.environ, **env} if env else None
 
         start = time.monotonic()
         timed_out = False
@@ -63,6 +66,7 @@ class LocalSandbox:
                 timeout=limits.timeout_s,
                 check=False,
                 preexec_fn=preexec,
+                env=run_env,
             )
             returncode, stdout, stderr = proc.returncode, proc.stdout, proc.stderr
         except subprocess.TimeoutExpired as exc:

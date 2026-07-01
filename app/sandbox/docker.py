@@ -76,12 +76,13 @@ class DockerSandbox:
         cmd: list[str],
         workspace: Path,
         limits: ResourceLimits | None = None,
+        env: dict[str, str] | None = None,
     ) -> ExecResult:
         limits = limits or ResourceLimits()
         workspace = workspace.resolve()
         name = f"bugfix-{uuid.uuid4().hex[:12]}"
 
-        run_cmd = self._build_run_cmd(name, cmd, workspace, limits)
+        run_cmd = self._build_run_cmd(name, cmd, workspace, limits, env)
 
         start = time.monotonic()
         timed_out = False
@@ -113,7 +114,12 @@ class DockerSandbox:
         )
 
     def _build_run_cmd(
-        self, name: str, cmd: list[str], workspace: Path, limits: ResourceLimits
+        self,
+        name: str,
+        cmd: list[str],
+        workspace: Path,
+        limits: ResourceLimits,
+        env: dict[str, str] | None = None,
     ) -> list[str]:
         assert self._docker is not None
         run_cmd = [
@@ -146,6 +152,8 @@ class DockerSandbox:
             "-v",
             f"{workspace}:{WORKSPACE_MOUNT}",
         ]
+        for key, value in (env or {}).items():
+            run_cmd += ["-e", f"{key}={value}"]
         if not limits.network:
             run_cmd += ["--network", "none"]
         # Bound the run from inside too, so a wedged container can't outlive us.

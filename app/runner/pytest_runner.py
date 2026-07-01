@@ -14,9 +14,12 @@ The invocation is ``python -m pytest -q --tb=native -rfE -p no:cacheprovider``:
 
 from __future__ import annotations
 
+import os
+import posixpath
 from pathlib import Path
 
 from app.runner.detect import detect_framework
+from app.runner.importable import ensure_importable
 from app.runner.models import Framework, Outcome, TestFailure, TestRunResult
 from app.runner.parse import build_failures, decide_outcome, parse_counts
 from app.sandbox.base import Sandbox
@@ -98,7 +101,20 @@ def run_pytest(
         raise NoTestFramework(f"no supported test framework detected in {workspace}")
 
     cmd = build_command(targets)
-    exec_result = sandbox.run(cmd, workspace, limits or ResourceLimits())
     # Relativize frames against wherever the sandbox mounted the workspace.
     root = sandbox.mount_point(workspace)
+    env = _import_env(workspace, root)
+    exec_result = sandbox.run(cmd, workspace, limits or ResourceLimits(), env=env)
     return parse_result(exec_result, workspace=root, framework=framework)
+
+
+def _import_env(workspace: Path, mount_root: str) -> dict[str, str]:
+    """Make the repo importable and return the env (``PYTHONPATH``) for the run.
+
+    :func:`ensure_importable` returns segments relative to the workspace; map each
+    onto ``mount_root`` (the workspace path *inside* the sandbox) since that is
+    where the run actually sees them.
+    """
+    segments = ensure_importable(workspace)
+    entries = [mount_root if seg == "" else posixpath.join(mount_root, seg) for seg in segments]
+    return {"PYTHONPATH": os.pathsep.join(entries)}

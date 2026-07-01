@@ -34,3 +34,13 @@ def test_read_file_full_and_range(workspace: Path) -> None:
 def test_read_file_rejects_path_traversal(workspace: Path) -> None:
     with pytest.raises(PathOutsideWorkspace):
         read_file(workspace, "../../etc/passwd")
+
+
+@pytest.mark.parametrize("rel", ["", ".", "subdir"])
+def test_read_file_on_directory_raises_clean_not_found(workspace: Path, rel: str) -> None:
+    # A directory (including the workspace root via "" / ".") must not surface a
+    # raw IsADirectoryError, which the agent loop does not catch and which crashes
+    # the whole job. It must be a FileNotFoundError the tool layer can recover from.
+    (workspace / "subdir").mkdir()
+    with pytest.raises(FileNotFoundError):
+        read_file(workspace, rel)

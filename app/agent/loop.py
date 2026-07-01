@@ -90,6 +90,26 @@ class AgentLoop:
         usage = TokenUsage()
         deadline = time.monotonic() + self.budget.deadline_s
 
+        # Pre-flight: if the repro test can't even be collected because the repo
+        # isn't importable in the sandbox, there is no failing-test signal to work
+        # against. Abort before spending any model calls, with an actionable reason,
+        # rather than flailing to max_iterations.
+        unimportable = self._preflight_unimportable(verify_targets)
+        if unimportable is not None:
+            from app.agent.edit import unified_diff
+
+            return AgentResult(
+                stop_reason=StopReason.UNREPRODUCIBLE,
+                resolved=False,
+                iterations=0,
+                usage=usage,
+                tool_calls=list(self.executor.tool_calls),
+                edits=[],
+                diff=unified_diff([]),
+                plan="",
+                summary=unimportable,
+            )
+
         plan = self.plan(task, usage) if do_plan else ""
         messages: list[dict[str, Any]] = [
             {"role": "user", "content": build_task_prompt(task, plan)}
@@ -159,6 +179,41 @@ class AgentLoop:
             diff=unified_diff(self.executor.edits),
             plan=plan,
             summary=summary or final_summary,
+        )
+
+    def _preflight_unimportable(self, verify_targets: list[str] | None) -> str | None:
+        """Return a diagnostic if the repro test can't be collected (import error).
+
+        Runs the target test(s) once against the untouched repo. A collection
+        error whose cause is a missing module means the repo isn't importable in
+        the sandbox — an environment problem the agent can't edit its way out of.
+        Returns ``None`` (proceed normally) for a genuine failing test, no tests,
+        or any non-import error.
+        """
+        from app.runner.models import Outcome
+        from app.runner.pytest_runner import NoTestFramework, run_pytest
+
+        try:
+            result = run_pytest(
+                self.executor.root,
+                self.executor.sandbox,
+                targets=verify_targets,
+                limits=self.executor.limits,
+            )
+        except NoTestFramework:
+            return None
+        if result.outcome is not Outcome.ERROR:
+            return None
+        blob = f"{result.stdout}\n{result.stderr}"
+        for failure in result.failures:
+            blob += f"\n{failure.message}"
+        marker = next((m for m in ("ModuleNotFoundError", "ImportError") if m in blob), None)
+        if marker is None:
+            return None
+        line = next((ln.strip() for ln in blob.splitlines() if marker in ln), marker)
+        return (
+            f"reproduction test could not be collected — repo not importable in the sandbox "
+            f"({line})"
         )
 
     def _verify(self, verify_targets: list[str] | None) -> tuple[bool, str]:

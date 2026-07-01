@@ -151,6 +151,27 @@ def test_loop_respects_iteration_budget(agent_fixable: Path) -> None:
     assert result.stop_reason is StopReason.MAX_ITERATIONS
 
 
+def test_loop_aborts_early_when_repro_uncollectable(tmp_path: Path) -> None:
+    # The repo's test can't even be imported (missing module) — there is no
+    # failing-test signal to iterate against. The loop must abort BEFORE spending
+    # any model calls, rather than flailing to max_iterations.
+    (tmp_path / "test_thing.py").write_text(
+        "import nonexistent_pkg_xyz\n\n\ndef test_x():\n    assert nonexistent_pkg_xyz.f() == 1\n",
+        encoding="utf-8",
+    )
+    client = _ScriptedClient([])  # must not be called
+    loop = _loop(tmp_path, client)
+
+    result = loop.run("fix the bug")
+
+    assert result.stop_reason is StopReason.UNREPRODUCIBLE
+    assert result.resolved is False
+    assert result.iterations == 0
+    assert result.edits == []
+    assert client.calls == []  # aborted before planning/any model call
+    assert "nonexistent_pkg_xyz" in result.summary
+
+
 def test_loop_token_accounting(agent_fixable: Path) -> None:
     client = _ScriptedClient(
         [

@@ -21,6 +21,7 @@ class StopReason(StrEnum):
     TIME_BUDGET = "time_budget"
     REFUSED = "refused"  # model returned stop_reason="refusal"
     ERROR = "error"  # an unrecoverable error in the loop
+    UNREPRODUCIBLE = "unreproducible"  # repro test can't be collected (repo not importable)
 
 
 @dataclass(frozen=True)
