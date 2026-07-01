@@ -20,6 +20,11 @@ _URL_RE = re.compile(r"github\.com[:/]+([\w.-]+)/([\w.-]+?)(?:\.git)?/?$")
 _SHORT_RE = re.compile(r"^([\w.-]+)/([\w.-]+?)(?:\.git)?$")
 
 
+def repo_clone_url(repo: Repo) -> str:
+    """Where to clone this repo from. Falls back to the GitHub-cloud HTTPS URL."""
+    return repo.source_url or f"https://github.com/{repo.full_name}.git"
+
+
 def parse_repo_url(url: str) -> str:
     """Return ``owner/name`` from a GitHub URL or shorthand; raise on anything else."""
     url = (url or "").strip()

@@ -133,6 +133,9 @@ class Repo(Base):
     full_name: Mapped[str] = mapped_column(String(255), index=True)
     installation_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     default_branch: Mapped[str] = mapped_column(String(255), default="main")
+    # Literal clone source: a git URL (any host) or local path. NULL means
+    # "derive the github.com HTTPS URL from full_name" (legacy / GitHub-cloud rows).
+    source_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     language: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = created_at_column()
 

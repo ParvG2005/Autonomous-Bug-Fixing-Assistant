@@ -1,6 +1,6 @@
 import pytest
 
-from app.db.repos import create_repo, delete_repo, list_repos, parse_repo_url
+from app.db.repos import create_repo, delete_repo, list_repos, parse_repo_url, repo_clone_url
 from app.models.entities import ArtifactKind, Repo
 
 
@@ -35,6 +35,16 @@ def test_parse_repo_url_ok(url, expected):
 def test_parse_repo_url_bad(bad):
     with pytest.raises(ValueError):
         parse_repo_url(bad)
+
+
+def test_repo_clone_url_defaults_to_github_when_source_none():
+    repo = Repo(full_name="octo/demo", default_branch="main", source_url=None)
+    assert repo_clone_url(repo) == "https://github.com/octo/demo.git"
+
+
+def test_repo_clone_url_uses_source_url_when_set():
+    repo = Repo(full_name="octo/demo", default_branch="main", source_url="file:///tmp/demo")
+    assert repo_clone_url(repo) == "file:///tmp/demo"
 
 
 @pytest.mark.asyncio
