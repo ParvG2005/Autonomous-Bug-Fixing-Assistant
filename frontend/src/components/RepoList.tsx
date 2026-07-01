@@ -6,6 +6,8 @@ export function RepoList() {
   const [repos, setRepos] = useState<Repo[]>([]);
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -31,6 +33,29 @@ export function RepoList() {
     }
   };
 
+  // Scan/Connect enqueue async worker tasks (HTTP 202) — await so failures
+  // surface instead of becoming unhandled rejections, then refresh because a
+  // successful connect flips publish_capable (and hides its own button).
+  const onTask = async (
+    key: string,
+    label: string,
+    fn: () => Promise<unknown>,
+    okMessage: string,
+  ) => {
+    setBusy(key);
+    setError(null);
+    setNotice(null);
+    try {
+      await fn();
+      setNotice(okMessage);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : `${label} failed`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <div className="p-6">
       <div className="mb-4 flex gap-2">
@@ -49,6 +74,7 @@ export function RepoList() {
         </button>
       </div>
       {error && <p className="mb-2 text-sm text-rose-700">{error}</p>}
+      {notice && <p className="mb-2 text-sm text-emerald-700">{notice}</p>}
       <ul className="divide-y divide-slate-200">
         {repos.map((r) => (
           <li key={r.id} className="flex items-center justify-between py-2">
@@ -59,27 +85,34 @@ export function RepoList() {
               </span>
               <button
                 type="button"
-                onClick={() => scanRepo(r.id)}
-                className="rounded bg-slate-100 px-2 py-1"
+                disabled={busy === `scan:${r.id}`}
+                onClick={() => onTask(`scan:${r.id}`, "Scan", () => scanRepo(r.id), "Scan started")}
+                className="rounded bg-slate-100 px-2 py-1 disabled:opacity-50"
               >
                 Scan
               </button>
               {!r.publish_capable && (
                 <button
                   type="button"
-                  onClick={() => connectRepo(r.id)}
-                  className="rounded bg-slate-100 px-2 py-1"
+                  disabled={busy === `connect:${r.id}`}
+                  onClick={() =>
+                    onTask(
+                      `connect:${r.id}`,
+                      "Connect GitHub App",
+                      () => connectRepo(r.id),
+                      "Connecting GitHub App",
+                    )
+                  }
+                  className="rounded bg-slate-100 px-2 py-1 disabled:opacity-50"
                 >
                   Connect GitHub App
                 </button>
               )}
               <button
                 type="button"
-                onClick={async () => {
-                  await deleteRepo(r.id);
-                  await refresh();
-                }}
-                className="rounded bg-rose-50 px-2 py-1 text-rose-700"
+                disabled={busy === `delete:${r.id}`}
+                onClick={() => onTask(`delete:${r.id}`, "Delete", () => deleteRepo(r.id), "Repo deleted")}
+                className="rounded bg-rose-50 px-2 py-1 text-rose-700 disabled:opacity-50"
               >
                 Delete
               </button>
