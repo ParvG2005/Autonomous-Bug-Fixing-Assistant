@@ -90,8 +90,22 @@ export function connectRepo(id: string): Promise<{ status: string }> {
 export function scanRepo(id: string): Promise<{ status: string }> {
   return request(`/repos/${id}/scan`, { method: "POST" });
 }
-export function createJob(repoId: string, body: string, title?: string): Promise<Job> {
-  return request<Job>("/jobs", { method: "POST", body: JSON.stringify({ repo_id: repoId, body, title }) });
+export function createJob(
+  repoId: string,
+  body: string,
+  title?: string,
+  opts?: { ref?: string; prNumber?: number },
+): Promise<Job> {
+  return request<Job>("/jobs", {
+    method: "POST",
+    body: JSON.stringify({
+      repo_id: repoId,
+      body,
+      title,
+      ref: opts?.ref || undefined,
+      pr_number: opts?.prNumber ?? undefined,
+    }),
+  });
 }
 export function publishJob(id: string): Promise<{ status: string }> {
   return request(`/jobs/${id}/publish`, { method: "POST" });

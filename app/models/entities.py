@@ -133,6 +133,9 @@ class Repo(Base):
     full_name: Mapped[str] = mapped_column(String(255), index=True)
     installation_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     default_branch: Mapped[str] = mapped_column(String(255), default="main")
+    # Literal clone source: a git URL (any host) or local path. NULL means
+    # "derive the github.com HTTPS URL from full_name" (legacy / GitHub-cloud rows).
+    source_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     language: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = created_at_column()
 
@@ -159,6 +162,12 @@ class Job(Base):
     trigger: Mapped[JobTrigger] = enum_column(JobTrigger, default=JobTrigger.WEBHOOK)
     issue_title: Mapped[str | None] = mapped_column(Text, nullable=True)
     issue_body_ref: Mapped[uuid.UUID | None] = mapped_column(nullable=True)  # ARTIFACT id
+    # Optional git ref (branch / tag / sha) to check out instead of the repo's
+    # default branch. NULL = default branch (webhook / legacy jobs).
+    ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Optional GitHub PR number to debug: its head commit is checked out after
+    # clone. GitHub-only; NULL for everything else.
+    pr_number: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     state: Mapped[JobState] = enum_column(JobState, default=JobState.QUEUED)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     budget: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)

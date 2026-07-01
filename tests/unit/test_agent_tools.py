@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from app.agent.tools import ToolExecutor, tool_schemas
 from app.core.allowlist import Allowlist
 from app.index.repo_brain import RepoBrain
@@ -74,6 +76,25 @@ def test_edit_file_error_is_reported_not_raised(workspace: Path) -> None:
     text, is_error = ex.dispatch(
         "edit_file", {"path": "sample.py", "old_str": "nonexistent", "new_str": "x"}
     )
+    assert is_error
+    assert text.startswith("error:")
+
+
+def test_unexpected_oserror_is_reported_not_raised(workspace: Path) -> None:
+    # A raw OSError (here PermissionError) from a tool must become a recoverable
+    # is_error result, not escape dispatch and kill the whole job.
+    import os
+
+    if os.geteuid() == 0:
+        pytest.skip("root ignores file permissions")
+    secret = workspace / "secret.py"
+    secret.write_text("x = 1\n", encoding="utf-8")
+    secret.chmod(0o000)
+    try:
+        ex = _executor(workspace)
+        text, is_error = ex.dispatch("read_file", {"path": "secret.py"})
+    finally:
+        secret.chmod(0o644)
     assert is_error
     assert text.startswith("error:")
 

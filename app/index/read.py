@@ -45,6 +45,11 @@ def read_file(
     if start_line < 1:
         raise ValueError("start_line is 1-based and must be >= 1")
     path = resolve_in_workspace(root, rel_path)
+    if not path.is_file():
+        # A directory (or the workspace root, when rel_path is "" / ".") would
+        # raise a raw IsADirectoryError that the agent loop doesn't catch and that
+        # crashes the job. Surface a recoverable FileNotFoundError instead.
+        raise FileNotFoundError(f"{Path(rel_path)!s} is not a file in the workspace")
     lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     last = len(lines) if end_line is None else min(end_line, len(lines))
     selected = lines[start_line - 1 : last]

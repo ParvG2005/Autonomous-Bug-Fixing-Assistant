@@ -221,7 +221,7 @@ class ToolExecutor:
             NoTestFramework,
             ValueError,
             KeyError,
-            FileNotFoundError,
+            OSError,  # any filesystem error (perms, IsADirectory, ...) must not kill the job
         ) as exc:
             text = f"error: {exc}"
             is_error = True

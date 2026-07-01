@@ -20,6 +20,42 @@ it("lists repos and adds one", async () => {
   await waitFor(() => expect(add).toHaveBeenCalledWith("octo/new"));
 });
 
+it("scans a repo and shows feedback", async () => {
+  vi.spyOn(api, "listRepos").mockResolvedValue([
+    { id: "r1", full_name: "octo/demo", publish_capable: false, created_at: "" },
+  ]);
+  const scan = vi.spyOn(api, "scanRepo").mockResolvedValue({ status: "scanning" });
+  render(<RepoList />);
+  await screen.findByText("octo/demo");
+  await userEvent.click(screen.getByRole("button", { name: /scan/i }));
+  await waitFor(() => expect(scan).toHaveBeenCalledWith("r1"));
+  await screen.findByText(/scan started/i);
+});
+
+it("surfaces an error when connect fails", async () => {
+  vi.spyOn(api, "listRepos").mockResolvedValue([
+    { id: "r1", full_name: "octo/demo", publish_capable: false, created_at: "" },
+  ]);
+  vi.spyOn(api, "connectRepo").mockRejectedValue(new api.ApiError(503, "worker queue not configured"));
+  render(<RepoList />);
+  await screen.findByText("octo/demo");
+  await userEvent.click(screen.getByRole("button", { name: /connect/i }));
+  await screen.findByText(/worker queue not configured/i);
+});
+
+it("surfaces an error when delete is blocked by a live job", async () => {
+  vi.spyOn(api, "listRepos").mockResolvedValue([
+    { id: "r1", full_name: "octo/demo", publish_capable: false, created_at: "" },
+  ]);
+  vi.spyOn(api, "deleteRepo").mockRejectedValue(
+    new api.ApiError(409, "repo has a live job; cannot delete"),
+  );
+  render(<RepoList />);
+  await screen.findByText("octo/demo");
+  await userEvent.click(screen.getByRole("button", { name: /delete/i }));
+  await screen.findByText(/live job; cannot delete/i);
+});
+
 it("hides the Connect button for a publish-capable repo", async () => {
   vi.spyOn(api, "listRepos").mockResolvedValue([
     { id: "r1", full_name: "octo/capable", publish_capable: true, created_at: "" },

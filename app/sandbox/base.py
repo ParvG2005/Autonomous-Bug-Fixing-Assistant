@@ -24,8 +24,14 @@ class Sandbox(Protocol):
         cmd: list[str],
         workspace: Path,
         limits: ResourceLimits | None = None,
+        env: dict[str, str] | None = None,
     ) -> ExecResult:
-        """Execute ``cmd`` with ``workspace`` as the working directory."""
+        """Execute ``cmd`` with ``workspace`` as the working directory.
+
+        ``env`` supplies extra environment variables (e.g. ``PYTHONPATH``) for the
+        run; how they are applied is implementation-specific (merged into the host
+        environment locally, passed as ``-e`` flags to the container).
+        """
         ...
 
     def mount_point(self, workspace: Path) -> str:

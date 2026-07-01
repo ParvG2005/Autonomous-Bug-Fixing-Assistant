@@ -6,6 +6,7 @@ with a fake arq pool standing in for the worker queue. No network, no Redis.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -33,14 +34,18 @@ async def fake_pool() -> _FakePool:
 
 
 @pytest.fixture
-async def api_client(tmp_path: Path, fake_pool: _FakePool) -> AsyncIterator[httpx.AsyncClient]:
+async def db(tmp_path: Path) -> Database:
     settings = Settings(
         app_env="ci",
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'manual_jobs.db'}",
     )
-    app = create_app(settings)
-    db = Database.from_settings(settings)
+    return Database.from_settings(settings)
+
+
+@pytest.fixture
+async def api_client(db: Database, fake_pool: _FakePool) -> AsyncIterator[httpx.AsyncClient]:
     await db.create_all()
+    app = create_app(Settings(app_env="ci"))
     app.state.db = db  # bypass lifespan; ASGITransport does not run it
     app.state.queue = JobQueue(fake_pool)
     transport = httpx.ASGITransport(app=app)
@@ -82,3 +87,24 @@ async def test_create_job_empty_body(api_client: httpx.AsyncClient) -> None:
 async def test_create_job_malformed_repo_id(api_client: httpx.AsyncClient) -> None:
     r = await api_client.post("/jobs", json={"repo_id": "not-a-uuid", "body": "x"})
     assert r.status_code == 400
+
+
+async def test_create_job_persists_ref_and_pr(api_client: httpx.AsyncClient, db: Database) -> None:
+    r = await api_client.post("/repos", json={"clone_url": "octo/demo"})
+    rid = r.json()["id"]
+
+    r = await api_client.post(
+        "/jobs",
+        json={"repo_id": rid, "body": "boom", "ref": "feature/x", "pr_number": 12},
+    )
+    assert r.status_code == 201
+    job_id = r.json()["id"]
+
+    from sqlalchemy import select
+
+    from app.models.entities import Job
+
+    async with db.session() as session:
+        job = (await session.execute(select(Job).where(Job.id == uuid.UUID(job_id)))).scalar_one()
+        assert job.ref == "feature/x"
+        assert job.pr_number == 12

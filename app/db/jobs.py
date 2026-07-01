@@ -148,6 +148,8 @@ async def ingest_manual_issue(
     repo_id: uuid.UUID,
     body: str,
     title: str | None,
+    ref: str | None = None,
+    pr_number: int | None = None,
 ) -> Job:
     """Create a queued MANUAL job from UI-submitted issue text / stack trace.
 
@@ -177,6 +179,8 @@ async def ingest_manual_issue(
         state=JobState.QUEUED,
         budget=dict(_DEFAULT_BUDGET),
         cost={},
+        ref=ref,
+        pr_number=pr_number,
     )
     session.add(job)
     await session.flush()  # assign job.id

@@ -52,3 +52,29 @@ def test_run_pytest_raises_without_framework(tmp_path: Path) -> None:
     (tmp_path / "main.py").write_text("print('hi')\n", encoding="utf-8")
     with pytest.raises(NoTestFramework):
         run_pytest(tmp_path, LocalSandbox())
+
+
+def test_local_sandbox_passes_env(tmp_path: Path) -> None:
+    result = LocalSandbox().run(
+        ["python", "-c", "import os; print(os.environ.get('BUGFIX_MARKER', 'unset'))"],
+        tmp_path,
+        env={"BUGFIX_MARKER": "on"},
+    )
+    assert result.returncode == 0
+    assert "on" in result.stdout
+
+
+def test_run_pytest_makes_root_package_importable(tmp_path: Path) -> None:
+    # A "Workflow"-shaped repo (files at root, imported under an alias) must now
+    # collect and run its tests instead of erroring at import.
+    (tmp_path / "__init__.py").write_text('"""pkg."""\n', encoding="utf-8")
+    (tmp_path / "bands.py").write_text("def ok():\n    return True\n", encoding="utf-8")
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "test_x.py").write_text(
+        "from calibrate import bands\n\n\ndef test_o():\n    assert bands.ok()\n",
+        encoding="utf-8",
+    )
+    result = run_pytest(tmp_path, LocalSandbox())
+    assert result.outcome is Outcome.PASSED, result.stdout + result.stderr
+    assert result.passed == 1

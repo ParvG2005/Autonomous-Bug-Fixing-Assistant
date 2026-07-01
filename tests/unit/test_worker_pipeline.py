@@ -33,7 +33,7 @@ from app.models.entities import (
     RunStatus,
 )
 from app.sandbox import LocalSandbox
-from app.workers.pipeline import RepoInfo, run_pipeline
+from app.workers.pipeline import RepoInfo, _default_prepare_workspace, run_pipeline
 from app.workers.progress import read_logs
 
 _ISSUE = """\
@@ -295,6 +295,49 @@ async def test_pipeline_clone_error_fails(db: Database, tmp_path: Path) -> None:
     async with db.session() as session:
         job = (await session.execute(select(Job))).scalar_one()
         assert "clone exploded" in (job.failure_reason or "")
+
+
+def test_default_prepare_workspace_uses_job_ref(monkeypatch, tmp_path):
+    seen = {}
+
+    def fake_clone(source, dest, depth=1, ref=None):
+        seen["ref"] = ref
+        return dest
+
+    monkeypatch.setattr("app.workers.pipeline.clone_repo", fake_clone)
+    repo = RepoInfo(
+        full_name="o/n", default_branch="main", clone_url="https://x/o/n.git", ref="feature/x"
+    )
+    _default_prepare_workspace(repo, tmp_path / "ws")
+    assert seen["ref"] == "feature/x"
+
+
+def test_default_prepare_workspace_falls_back_to_default_branch(monkeypatch, tmp_path):
+    seen = {}
+    monkeypatch.setattr(
+        "app.workers.pipeline.clone_repo",
+        lambda source, dest, depth=1, ref=None: seen.update(ref=ref) or dest,
+    )
+    repo = RepoInfo(full_name="o/n", default_branch="main", clone_url="https://x/o/n.git", ref=None)
+    _default_prepare_workspace(repo, tmp_path / "ws")
+    assert seen["ref"] == "main"
+
+
+def test_default_prepare_workspace_fetches_pr_head(monkeypatch, tmp_path):
+    calls = {}
+    monkeypatch.setattr(
+        "app.workers.pipeline.clone_repo",
+        lambda source, dest, depth=1, ref=None: dest,
+    )
+    monkeypatch.setattr(
+        "app.workers.pipeline.fetch_pr_head",
+        lambda ws, n, **k: calls.update(pr=n),
+    )
+    repo = RepoInfo(
+        full_name="o/n", default_branch="main", clone_url="https://x/o/n.git", pr_number=7
+    )
+    _default_prepare_workspace(repo, tmp_path / "ws")
+    assert calls["pr"] == 7
 
 
 async def test_pipeline_skips_a_non_queued_job(
