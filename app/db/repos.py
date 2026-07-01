@@ -38,6 +38,16 @@ def parse_repo_url(url: str) -> tuple[str, str | None]:
     if not url:
         raise ValueError("empty repo url")
 
+    # Local path: full_name is the basename; source is the literal path/url.
+    # Must run before the "github.com" substring check below, since a local
+    # path can legitimately contain that substring (e.g. a mirror directory
+    # named "github.com-mirror").
+    if url.startswith(("/", "./", "../", "~", "file://")):
+        name = url.rstrip("/").split("/")[-1] or "repo"
+        if name.endswith(".git"):
+            name = name[:-4]
+        return name, url
+
     # GitHub cloud: store only full_name, derive the URL later.
     if "github.com" in url:
         m = _GH_URL_RE.search(url)
@@ -47,13 +57,6 @@ def parse_repo_url(url: str) -> tuple[str, str | None]:
     m = _SHORT_RE.match(url)
     if m is not None:
         return f"{m.group(1)}/{m.group(2)}", None
-
-    # Local path: full_name is the basename; source is the literal path/url.
-    if url.startswith(("/", "./", "../", "~", "file://")):
-        name = url.rstrip("/").split("/")[-1] or "repo"
-        if name.endswith(".git"):
-            name = name[:-4]
-        return name, url
 
     # Any other git remote (gitlab, bitbucket, self-hosted, ssh).
     m = _ANY_REMOTE_RE.search(url)

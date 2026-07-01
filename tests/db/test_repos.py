@@ -28,6 +28,10 @@ async def test_repo_persists_without_install(db_session):
         ("git@gitlab.com:grp/proj.git", ("grp/proj", "git@gitlab.com:grp/proj.git")),
         ("/Users/me/code/myrepo", ("myrepo", "/Users/me/code/myrepo")),
         ("file:///Users/me/code/myrepo", ("myrepo", "file:///Users/me/code/myrepo")),
+        (
+            "/Users/me/code/github.com-mirror/octo/demo",
+            ("demo", "/Users/me/code/github.com-mirror/octo/demo"),
+        ),
     ],
 )
 def test_parse_repo_url_classifies_sources(url, expected):
@@ -37,6 +41,11 @@ def test_parse_repo_url_classifies_sources(url, expected):
 def test_parse_repo_url_rejects_empty():
     with pytest.raises(ValueError):
         parse_repo_url("")
+
+
+def test_parse_repo_url_rejects_garbage():
+    with pytest.raises(ValueError):
+        parse_repo_url("not a url")
 
 
 def test_repo_clone_url_defaults_to_github_when_source_none():
