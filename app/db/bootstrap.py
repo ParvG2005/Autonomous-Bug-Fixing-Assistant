@@ -18,6 +18,7 @@ non-destructive start — none of this runs there.
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -184,7 +185,12 @@ def _github_issue_source(db: Database, settings: Settings, *, label: str | None)
                 default_branch=repo.default_branch,
             )
 
-        identity = asyncio.run(_identity())
+        # ``_source`` is a synchronous IssueSource but is invoked from inside
+        # ``run_bootstrap``'s event loop, so ``asyncio.run`` here would raise
+        # "cannot be called from a running event loop". Run the async identity
+        # fetch on a worker thread, which has no running loop of its own.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            identity = pool.submit(lambda: asyncio.run(_identity())).result()
         owner, name = full_name.split("/", 1)
         token = mint_installation_token(settings, identity.installation_id, now=int(time.time()))
         with GitHubClient(RepoRef(owner, name, identity.installation_id), token) as gh:

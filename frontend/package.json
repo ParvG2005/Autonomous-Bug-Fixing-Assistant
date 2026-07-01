@@ -7,7 +7,7 @@
     "dev:web": "vite",
     "dev:infra": "docker compose -f ../docker-compose.yml up -d postgres redis",
     "dev:migrate": "cd .. && uv run alembic upgrade head",
-    "dev:bootstrap": "cd .. && uv run bugfix-bootstrap --reset --scrape",
+    "dev:bootstrap": "cd .. && uv run bugfix-bootstrap --reset",
     "predev": "npm run dev:infra && wait-on tcp:127.0.0.1:5432 tcp:127.0.0.1:6379 && npm run dev:migrate && npm run dev:bootstrap",
     "dev": "concurrently -k -n api,worker,web -c green,yellow,cyan \"cd .. && uv run bugfix-api\" \"cd .. && uv run bugfix-worker\" \"vite\"",
     "build": "tsc --noEmit && vite build",
